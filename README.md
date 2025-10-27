@@ -153,29 +153,132 @@ flake8 *.py
 python test_core_modules.py
 ```
 
+## 调试工具
+
+项目提供了专门的调试工具帮助排查 EyeLink 连接问题：
+
+### 1. 网络连接检查
+
+```bash
+./check_network.sh [IP地址]
+
+# 示例
+./check_network.sh 100.1.1.1
+```
+
+此脚本会自动检查：
+- Ping 连通性
+- 本地网络接口
+- 路由配置
+- ARP 缓存
+
+### 2. EyeLink 连接测试
+
+```bash
+# 测试真实设备
+python debug_eyelink.py --host 100.1.1.1
+
+# 测试虚拟模式
+python debug_eyelink.py --dummy
+
+# 自定义屏幕尺寸
+python debug_eyelink.py --host 100.1.1.1 --width 1920 --height 1080
+```
+
+此脚本会：
+1. 检查 PyLink 可用性
+2. 显示连接参数
+3. 尝试连接 EyeLink
+4. 测试发送标记
+5. 断开连接
+
+所有步骤都有详细的调试信息输出。
+
+### 3. 日志级别
+
+如需更详细的调试信息：
+
+```bash
+export LOG_LEVEL=DEBUG
+python main.py
+```
+
 ## 故障排除
 
 ### PyLink 导入失败
 
+**症状**: 启动时提示 "PyLink library not available"
+
+**解决方案**:
 ```bash
-# 安装 EyeLink Developers Kit 或使用虚拟模式
+# 1. 安装 EyeLink Developers Kit
+# 从 https://www.sr-research.com/support/ 下载
+
+# 2. 验证安装
+python -c "import pylink; print(pylink)"
+
+# 3. 或使用虚拟模式测试
 export EYELINK_DUMMY_MODE=true
 python main.py
 ```
 
 ### 端口被占用
 
+**症状**: "Address already in use"
+
+**解决方案**:
 ```bash
 export MAIC_PORT=8124
 python main.py
 ```
 
-### 连接失败
+### EyeLink 连接失败
 
-检查：
-1. EyeLink 主机是否开启
-2. 网络连接是否正常
-3. IP 地址是否正确
+**症状**: 调用 `/eyelink/connect` 返回错误
+
+**调试步骤**:
+
+1. **检查网络连接**
+   ```bash
+   ./check_network.sh 100.1.1.1
+   ```
+
+2. **运行调试脚本**
+   ```bash
+   python debug_eyelink.py --host 100.1.1.1
+   ```
+
+3. **检查常见问题**:
+   - [ ] EyeLink 主机是否开机？
+   - [ ] 网络线是否连接？
+   - [ ] IP 地址是否正确？（在 EyeLink 主机上确认）
+   - [ ] 防火墙是否阻止连接？
+   - [ ] PyLink 是否正确安装？
+
+4. **查看详细日志**:
+   ```bash
+   export LOG_LEVEL=DEBUG
+   python main.py
+   ```
+   
+   然后查看 `log/service.out` 获取详细错误信息
+
+5. **尝试虚拟模式**（验证代码逻辑）:
+   ```bash
+   python debug_eyelink.py --dummy
+   ```
+
+### 标记发送失败
+
+**可能原因**:
+- 未处于 RECORDING 状态
+- Tracker 对象未初始化
+- 消息格式不正确
+
+**解决方案**:
+1. 检查状态: `GET /eyelink/status`
+2. 确保先调用 `POST /eyelink/start_recording`
+3. 查看 DEBUG 日志确认消息格式
 
 ## 技术栈
 

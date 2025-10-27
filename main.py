@@ -53,12 +53,21 @@ app.include_router(api_routes.router)
 async def on_startup():
     """应用启动时的初始化"""
     logger.info(f"Starting {config.APP_NAME} v{config.APP_VERSION} on port {config.PORT}")
-    logger.info(f"EyeLink available: {EYELINK_AVAILABLE}")
+    
+    # 打印配置信息（便于调试）
+    config.print_config()
+    
+    # 检查 EyeLink 可用性
+    if EYELINK_AVAILABLE:
+        logger.info("✓ PyLink 可用 - EyeLink 功能已启用")
+    else:
+        logger.warning("⚠️  PyLink 不可用 - EyeLink 功能已禁用")
+        logger.warning("如需使用眼动仪，请安装 EyeLink Developers Kit")
     
     # 启动数据轮询器
     if config.POLLING_ENABLED:
         data_poller.start()
-        logger.info("Data polling enabled")
+        logger.info("✓ 数据轮询已启动")
 
 
 @app.on_event("shutdown")
@@ -196,6 +205,7 @@ async def send_eyelink_marker(
     根据接收到的数据自动发送眼动仪标记
     """
     if not eyelink_manager.get_status().connected:
+        logger.warning("EyeLink not connected, skipping marker")
         return
     
     try:

@@ -71,42 +71,134 @@ class EyeLinkManager:
             - 实际硬件连接可能需要调整网络配置
             - 虚拟模式用于测试，不记录真实数据
         """
+        logger.info("=" * 60)
+        logger.info("开始 EyeLink 连接调试")
+        logger.info("=" * 60)
+        
+        # 检查 PyLink 可用性
         if not EYELINK_AVAILABLE:
             self.error_message = "PyLink library not available. Install EyeLink Developers Kit."
             self.status = EyeLinkStatus.ERROR
-            logger.error(self.error_message)
+            logger.error("❌ " + self.error_message)
+            logger.error("请检查:")
+            logger.error("  1. 是否已安装 EyeLink Developers Kit")
+            logger.error("  2. Python 是否能找到 pylink 模块")
+            logger.error("  3. 尝试: python -c 'import pylink; print(pylink.__version__)'")
             return False
-            
+        
+        logger.info(f"✓ PyLink 模块已加载: {pylink}")
+        
         try:
             with self._lock:
                 self.status = EyeLinkStatus.CONNECTING
-                logger.info(f"Connecting to EyeLink at {host_ip} (dummy={dummy_mode})")
+                
+                # 打印连接参数
+                logger.info(f"连接参数:")
+                logger.info(f"  - 目标 IP: {host_ip}")
+                logger.info(f"  - 虚拟模式: {dummy_mode}")
+                logger.info(f"  - 屏幕尺寸: {screen_width} x {screen_height}")
                 
                 # 创建连接
                 if dummy_mode:
-                    self.tracker = pylink.EyeLink(None)
-                    logger.warning("Running in DUMMY mode - no real hardware connection")
+                    logger.warning("⚠️  使用虚拟模式 (Dummy Mode)")
+                    logger.info("  - 不会连接真实硬件")
+                    logger.info("  - 适合测试代码逻辑")
+                    try:
+                        self.tracker = pylink.EyeLink(None)
+                        logger.info("✓ 虚拟连接创建成功")
+                    except Exception as e:
+                        logger.error(f"❌ 虚拟连接创建失败: {e}")
+                        raise
                 else:
-                    self.tracker = pylink.EyeLink(host_ip)
+                    logger.info(f"尝试连接到真实设备: {host_ip}")
+                    logger.info("请确保:")
+                    logger.info("  1. EyeLink 主机已开机")
+                    logger.info("  2. 网络连接正常 (可以先 ping 测试)")
+                    logger.info("  3. 主机 IP 地址正确")
+                    logger.info("  4. 防火墙未阻止连接")
                     
+                    try:
+                        # 尝试创建连接
+                        logger.info("正在创建连接对象...")
+                        self.tracker = pylink.EyeLink(host_ip)
+                        logger.info("✓ 连接对象创建成功")
+                        
+                        # 检查连接状态
+                        if self.tracker.isConnected():
+                            logger.info("✓ 设备连接确认成功")
+                        else:
+                            logger.warning("⚠️  连接对象创建了，但 isConnected() 返回 False")
+                        
+                        # 获取设备信息
+                        try:
+                            version = self.tracker.getTrackerVersion()
+                            logger.info(f"✓ 设备版本: {version}")
+                        except Exception as e:
+                            logger.warning(f"⚠️  无法获取设备版本: {e}")
+                            
+                    except RuntimeError as e:
+                        logger.error(f"❌ 连接失败 (RuntimeError): {e}")
+                        logger.error("常见原因:")
+                        logger.error("  1. IP 地址错误或设备未开机")
+                        logger.error("  2. 网络不通 (尝试: ping {})".format(host_ip))
+                        logger.error("  3. EyeLink 软件未运行")
+                        logger.error("  4. 端口被占用或防火墙阻止")
+                        raise
+                    except Exception as e:
+                        logger.error(f"❌ 连接失败 (未知错误): {type(e).__name__}: {e}")
+                        raise
+                
                 # 配置屏幕坐标
-                # 注意：这些命令直接发送给眼动仪，格式必须严格遵循 EyeLink 规范
-                self.tracker.sendCommand(
-                    f"screen_pixel_coords 0 0 {screen_width-1} {screen_height-1}"
-                )
-                self.tracker.sendMessage(
-                    f"DISPLAY_COORDS 0 0 {screen_width-1} {screen_height-1}"
-                )
+                logger.info("配置屏幕参数...")
+                try:
+                    screen_cmd = f"screen_pixel_coords 0 0 {screen_width-1} {screen_height-1}"
+                    logger.debug(f"发送命令: {screen_cmd}")
+                    self.tracker.sendCommand(screen_cmd)
+                    logger.info("✓ screen_pixel_coords 设置成功")
+                    
+                    display_msg = f"DISPLAY_COORDS 0 0 {screen_width-1} {screen_height-1}"
+                    logger.debug(f"发送消息: {display_msg}")
+                    self.tracker.sendMessage(display_msg)
+                    logger.info("✓ DISPLAY_COORDS 设置成功")
+                    
+                except Exception as e:
+                    logger.error(f"❌ 配置屏幕参数失败: {e}")
+                    raise
                 
                 self.status = EyeLinkStatus.CONNECTED
                 self.error_message = None
-                logger.info("Successfully connected to EyeLink")
+                
+                logger.info("=" * 60)
+                logger.info("✅ EyeLink 连接成功!")
+                logger.info("=" * 60)
                 return True
                 
         except Exception as e:
             self.error_message = f"Connection failed: {str(e)}"
             self.status = EyeLinkStatus.ERROR
-            logger.error(self.error_message, exc_info=True)
+            logger.error("=" * 60)
+            logger.error(f"❌ 连接失败: {self.error_message}")
+            logger.error("=" * 60)
+            logger.exception("详细错误信息:")
+            
+            # 提供排查建议
+            logger.info("")
+            logger.info("排查建议:")
+            logger.info("1. 检查网络连接:")
+            logger.info(f"   ping {host_ip}")
+            logger.info("")
+            logger.info("2. 检查 EyeLink 主机状态:")
+            logger.info("   - 主机是否开机")
+            logger.info("   - EyeLink 软件是否运行")
+            logger.info("")
+            logger.info("3. 验证 IP 地址:")
+            logger.info("   - 默认应该是 100.1.1.1")
+            logger.info("   - 检查 EyeLink 主机配置")
+            logger.info("")
+            logger.info("4. 尝试虚拟模式测试:")
+            logger.info("   export EYELINK_DUMMY_MODE=true")
+            logger.info("   python main.py")
+            
             return False
     
     def disconnect(self) -> None:
@@ -145,45 +237,94 @@ class EyeLinkManager:
             - 文件保存在眼动仪主机上，需要手动传输到本地
             - recording 参数 (1,1,1,1) 含义请参考 PyLink 文档
         """
-        if not self.tracker or self.status != EyeLinkStatus.CONNECTED:
-            logger.error("Cannot start recording - tracker not connected")
+        logger.info("=" * 60)
+        logger.info("开始记录眼动数据")
+        logger.info("=" * 60)
+        
+        # 检查连接状态
+        if not self.tracker:
+            logger.error("❌ Tracker 对象不存在")
+            logger.error("请先调用 connect() 方法")
             return False
+            
+        if self.status != EyeLinkStatus.CONNECTED:
+            logger.error(f"❌ 当前状态不正确: {self.status.value}")
+            logger.error("需要状态为 CONNECTED 才能开始记录")
+            return False
+        
+        logger.info(f"✓ 连接状态正常")
+        logger.info(f"EDF 文件名: {edf_filename}")
+        
+        # 验证文件名
+        if len(edf_filename) > 12:  # 8.3 格式
+            logger.warning(f"⚠️  文件名可能过长: {edf_filename}")
+            logger.warning("EyeLink 要求 8.3 格式 (8个字符 + .edf)")
             
         try:
             with self._lock:
                 # 打开 EDF 文件
-                self.tracker.openDataFile(edf_filename)
-                self.edf_file = edf_filename
+                logger.info("打开 EDF 文件...")
+                try:
+                    self.tracker.openDataFile(edf_filename)
+                    logger.info(f"✓ EDF 文件打开成功: {edf_filename}")
+                    self.edf_file = edf_filename
+                except Exception as e:
+                    logger.error(f"❌ 打开 EDF 文件失败: {e}")
+                    raise
                 
                 # 配置记录参数
-                # 注意：这些参数控制哪些数据被记录，根据实验需求可能需要调整
-                self.tracker.sendCommand(
-                    "file_event_filter = LEFT,RIGHT,FIXATION,SACCADE,BLINK,MESSAGE,BUTTON,INPUT"
-                )
-                self.tracker.sendCommand(
-                    "file_sample_data = LEFT,RIGHT,GAZE,HREF,RAW,AREA,HTARGET,GAZERES,BUTTON,STATUS,INPUT"
-                )
-                self.tracker.sendCommand(
-                    "link_event_filter = LEFT,RIGHT,FIXATION,SACCADE,BLINK,BUTTON,FIXUPDATE,INPUT"
-                )
-                self.tracker.sendCommand(
-                    "link_sample_data = LEFT,RIGHT,GAZE,GAZERES,AREA,HTARGET,STATUS,INPUT"
-                )
+                logger.info("配置记录参数...")
+                
+                commands = [
+                    ("file_event_filter", "LEFT,RIGHT,FIXATION,SACCADE,BLINK,MESSAGE,BUTTON,INPUT"),
+                    ("file_sample_data", "LEFT,RIGHT,GAZE,HREF,RAW,AREA,HTARGET,GAZERES,BUTTON,STATUS,INPUT"),
+                    ("link_event_filter", "LEFT,RIGHT,FIXATION,SACCADE,BLINK,BUTTON,FIXUPDATE,INPUT"),
+                    ("link_sample_data", "LEFT,RIGHT,GAZE,GAZERES,AREA,HTARGET,STATUS,INPUT")
+                ]
+                
+                for cmd_name, cmd_value in commands:
+                    try:
+                        cmd = f"{cmd_name} = {cmd_value}"
+                        logger.debug(f"  发送: {cmd}")
+                        self.tracker.sendCommand(cmd)
+                        logger.debug(f"  ✓ {cmd_name} 设置成功")
+                    except Exception as e:
+                        logger.error(f"  ❌ {cmd_name} 设置失败: {e}")
+                        raise
+                
+                logger.info("✓ 所有记录参数配置完成")
                 
                 # 开始记录
-                # 参数 (1,1,1,1) 表示：record to file, record link events, record link samples, record button events
-                error = self.tracker.startRecording(1, 1, 1, 1)
-                if error:
-                    logger.error(f"startRecording returned error code: {error}")
-                    return False
-                    
+                logger.info("启动记录...")
+                logger.debug("  调用 startRecording(1, 1, 1, 1)")
+                logger.debug("  参数含义: (record_file, record_link_events, record_link_samples, record_buttons)")
+                
+                try:
+                    error = self.tracker.startRecording(1, 1, 1, 1)
+                    if error:
+                        logger.error(f"❌ startRecording 返回错误代码: {error}")
+                        logger.error("错误代码含义:")
+                        logger.error("  0: 成功")
+                        logger.error("  其他: 参考 PyLink 文档")
+                        return False
+                    logger.info("✓ startRecording 调用成功")
+                except Exception as e:
+                    logger.error(f"❌ startRecording 调用失败: {e}")
+                    raise
+                
                 self.recording = True
                 self.status = EyeLinkStatus.RECORDING
-                logger.info(f"Started recording to EDF: {edf_filename}")
+                
+                logger.info("=" * 60)
+                logger.info(f"✅ 记录已开始: {edf_filename}")
+                logger.info("=" * 60)
                 return True
                 
         except Exception as e:
-            logger.error(f"Error starting recording: {e}", exc_info=True)
+            logger.error("=" * 60)
+            logger.error(f"❌ 记录启动失败: {e}")
+            logger.error("=" * 60)
+            logger.exception("详细错误:")
             return False
     
     def stop_recording(self) -> bool:
@@ -224,51 +365,84 @@ class EyeLinkManager:
             - MESSAGE 命令格式需严格遵循 EyeLink 规范
             - TRIAL_VAR 变量会在 Data Viewer 中显示
         """
-        if not self.tracker or self.status not in [
-            EyeLinkStatus.CONNECTED,
-            EyeLinkStatus.RECORDING
-        ]:
-            logger.warning("Cannot send marker - tracker not ready")
+        # 检查状态
+        if not self.tracker:
+            logger.warning("❌ 无法发送标记: Tracker 对象不存在")
             return False
+            
+        if self.status not in [EyeLinkStatus.CONNECTED, EyeLinkStatus.RECORDING]:
+            logger.warning(f"❌ 无法发送标记: 状态不正确 ({self.status.value})")
+            logger.warning("需要 CONNECTED 或 RECORDING 状态")
+            return False
+        
+        logger.debug("-" * 40)
+        logger.debug(f"发送标记: {marker.marker_type.value}")
+        logger.debug(f"  消息: {marker.message}")
+        if marker.trial_id:
+            logger.debug(f"  试验ID: {marker.trial_id}")
+        if marker.additional_data:
+            logger.debug(f"  附加数据: {marker.additional_data}")
             
         try:
             with self._lock:
+                message_to_send = None
+                
                 # 根据标记类型发送不同格式的消息
                 if marker.marker_type == MarkerType.MESSAGE:
-                    self.tracker.sendMessage(marker.message)
+                    message_to_send = marker.message
                     
                 elif marker.marker_type == MarkerType.TRIAL_START:
                     # TRIALID 是 Data Viewer 识别试验开始的特殊标记
                     trial_id = marker.trial_id or "unknown"
-                    self.tracker.sendMessage(f"TRIALID {trial_id}")
+                    message_to_send = f"TRIALID {trial_id}"
                     
                 elif marker.marker_type == MarkerType.TRIAL_END:
                     # TRIAL_RESULT 标记试验结束，0 表示成功
-                    self.tracker.sendMessage("TRIAL_RESULT 0")
+                    message_to_send = "TRIAL_RESULT 0"
                     
                 elif marker.marker_type == MarkerType.STIMULUS_ON:
-                    self.tracker.sendMessage(f"STIMULUS_ON {marker.message}")
+                    message_to_send = f"STIMULUS_ON {marker.message}"
                     
                 elif marker.marker_type == MarkerType.STIMULUS_OFF:
-                    self.tracker.sendMessage(f"STIMULUS_OFF {marker.message}")
+                    message_to_send = f"STIMULUS_OFF {marker.message}"
                     
                 elif marker.marker_type == MarkerType.RESPONSE:
-                    self.tracker.sendMessage(f"RESPONSE {marker.message}")
+                    message_to_send = f"RESPONSE {marker.message}"
                     
                 elif marker.marker_type == MarkerType.CUSTOM:
-                    self.tracker.sendMessage(marker.message)
+                    message_to_send = marker.message
+                
+                # 发送主消息
+                if message_to_send:
+                    logger.debug(f"  → sendMessage: {message_to_send}")
+                    try:
+                        self.tracker.sendMessage(message_to_send)
+                        logger.debug(f"  ✓ 主消息发送成功")
+                    except Exception as e:
+                        logger.error(f"  ❌ 主消息发送失败: {e}")
+                        raise
                 
                 # 记录额外的试验变量
-                # 格式：!V TRIAL_VAR variable_name value
                 if marker.additional_data:
+                    logger.debug(f"  发送附加变量 ({len(marker.additional_data)} 个):")
                     for key, value in marker.additional_data.items():
-                        self.tracker.sendMessage(f"!V TRIAL_VAR {key} {value}")
+                        var_msg = f"!V TRIAL_VAR {key} {value}"
+                        logger.debug(f"    → {var_msg}")
+                        try:
+                            self.tracker.sendMessage(var_msg)
+                            logger.debug(f"    ✓ 变量 {key} 发送成功")
+                        except Exception as e:
+                            logger.warning(f"    ⚠️  变量 {key} 发送失败: {e}")
                 
-                logger.debug(f"Sent marker: {marker.marker_type.value} - {marker.message}")
+                logger.debug(f"✅ 标记发送完成: {marker.marker_type.value}")
+                logger.debug("-" * 40)
                 return True
                 
         except Exception as e:
-            logger.error(f"Error sending marker: {e}", exc_info=True)
+            logger.error("-" * 40)
+            logger.error(f"❌ 发送标记失败: {e}")
+            logger.error("-" * 40)
+            logger.exception("详细错误:")
             return False
     
     def get_status(self) -> EyeLinkStatusResponse:
