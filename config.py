@@ -28,9 +28,10 @@ EYELINK_SCREEN_WIDTH = int(os.getenv("EYELINK_SCREEN_WIDTH", "1920"))
 EYELINK_SCREEN_HEIGHT = int(os.getenv("EYELINK_SCREEN_HEIGHT", "1080"))
 EYELINK_EDF_FILENAME = os.getenv("EYELINK_EDF_FILENAME", "experiment.edf")
 
-# ==================== 数据轮询配置 ====================
-POLLING_ENABLED = os.getenv("POLLING_ENABLED", "true").lower() == "true"
-POLLING_INTERVAL = float(os.getenv("POLLING_INTERVAL", "0.1"))  # 秒
+# 启动时自动连接 EyeLink
+EYELINK_AUTO_CONNECT = os.getenv("EYELINK_AUTO_CONNECT", "true").lower() == "true"
+# 启动时自动开始记录
+EYELINK_AUTO_RECORD = os.getenv("EYELINK_AUTO_RECORD", "true").lower() == "true"
 
 # ==================== 初始化目录 ====================
 def init_directories():
@@ -57,10 +58,8 @@ def print_config():
     logger.info(f"  虚拟模式: {EYELINK_DUMMY_MODE}")
     logger.info(f"  屏幕尺寸: {EYELINK_SCREEN_WIDTH} x {EYELINK_SCREEN_HEIGHT}")
     logger.info(f"  EDF 文件: {EYELINK_EDF_FILENAME}")
-    logger.info("")
-    logger.info("轮询配置:")
-    logger.info(f"  启用: {POLLING_ENABLED}")
-    logger.info(f"  间隔: {POLLING_INTERVAL}s")
+    logger.info(f"  自动连接: {EYELINK_AUTO_CONNECT}")
+    logger.info(f"  自动记录: {EYELINK_AUTO_RECORD}")
     logger.info("")
     logger.info("目录:")
     logger.info(f"  数据目录: {LOG_DIR}")

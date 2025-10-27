@@ -2,7 +2,8 @@
 MAIC JSON Service - 主服务文件
 
 一个集成了 EyeLink 1000 Plus 眼动仪的 FastAPI 服务
-支持实时数据标记和轮询机制
+支持实时数据接收和标记功能
+消息频率由 MAIC 服务器控制，通过 /ingest 端点接收
 """
 
 import json
@@ -17,7 +18,6 @@ from pydantic import ValidationError
 
 import api_routes
 import config
-from data_poller import DataPoller
 from eyelink_manager import EYELINK_AVAILABLE, eyelink_manager
 from models import AckResponse, EyeLinkMarker, IngressPayload, MarkerType
 from utils import generate_event_brief
@@ -39,10 +39,6 @@ app = FastAPI(
     description="集成 EyeLink 眼动仪的数据收集服务"
 )
 
-# 初始化数据轮询器
-data_poller = DataPoller(config.POLLING_INTERVAL)
-api_routes.set_data_poller(data_poller)
-
 # 注册路由
 app.include_router(api_routes.router)
 
@@ -58,16 +54,41 @@ async def on_startup():
     config.print_config()
     
     # 检查 EyeLink 可用性
-    if EYELINK_AVAILABLE:
-        logger.info("✓ PyLink 可用 - EyeLink 功能已启用")
-    else:
+    if not EYELINK_AVAILABLE:
         logger.warning("⚠️  PyLink 不可用 - EyeLink 功能已禁用")
         logger.warning("如需使用眼动仪，请安装 EyeLink Developers Kit")
+        return
     
-    # 启动数据轮询器
-    if config.POLLING_ENABLED:
-        data_poller.start()
-        logger.info("✓ 数据轮询已启动")
+    logger.info("✓ PyLink 可用 - EyeLink 功能已启用")
+    
+    # 自动连接 EyeLink
+    if config.EYELINK_AUTO_CONNECT:
+        logger.info("正在自动连接 EyeLink...")
+        success = eyelink_manager.connect(
+            host_ip=config.EYELINK_HOST_IP,
+            dummy_mode=config.EYELINK_DUMMY_MODE,
+            screen_width=config.EYELINK_SCREEN_WIDTH,
+            screen_height=config.EYELINK_SCREEN_HEIGHT
+        )
+        
+        if success:
+            logger.info("✅ EyeLink 连接成功")
+            
+            # 自动开始记录
+            if config.EYELINK_AUTO_RECORD:
+                logger.info("正在自动开始记录...")
+                record_success = eyelink_manager.start_recording(
+                    edf_filename=config.EYELINK_EDF_FILENAME
+                )
+                if record_success:
+                    logger.info("✅ 记录已开始")
+                else:
+                    logger.error("❌ 开始记录失败")
+        else:
+            logger.error("❌ EyeLink 连接失败")
+            logger.error("服务将继续运行，但 EyeLink 功能不可用")
+    else:
+        logger.info("自动连接已禁用，请手动调用 /eyelink/connect")
 
 
 @app.on_event("shutdown")
@@ -75,13 +96,21 @@ async def on_shutdown():
     """应用关闭时的清理"""
     logger.info(f"Shutting down {config.APP_NAME}")
     
-    # 停止轮询
-    if config.POLLING_ENABLED:
-        data_poller.stop()
-    
-    # 断开眼动仪
-    if eyelink_manager.get_status().connected:
-        eyelink_manager.disconnect()
+    # 停止记录并断开眼动仪
+    try:
+        status = eyelink_manager.get_status()
+        
+        if status.recording:
+            logger.info("停止 EyeLink 记录...")
+            eyelink_manager.stop_recording()
+        
+        if status.connected:
+            logger.info("断开 EyeLink 连接...")
+            eyelink_manager.disconnect()
+            
+        logger.info("✓ EyeLink 清理完成")
+    except Exception as e:
+        logger.error(f"EyeLink 清理时出错: {e}")
 
 
 # ==================== 核心API ====================

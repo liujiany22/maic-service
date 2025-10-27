@@ -5,13 +5,11 @@ API 路由模块
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from config import POLLING_ENABLED
-from data_poller import DataPoller
 from eyelink_manager import EYELINK_AVAILABLE, eyelink_manager
 from models import EyeLinkConfig, EyeLinkMarker, EyeLinkStatusResponse
 
@@ -19,15 +17,6 @@ logger = logging.getLogger(__name__)
 
 # 创建路由器
 router = APIRouter()
-
-# 全局数据轮询器（由 main.py 注入）
-data_poller: Optional[DataPoller] = None
-
-
-def set_data_poller(poller: DataPoller) -> None:
-    """设置数据轮询器实例"""
-    global data_poller
-    data_poller = poller
 
 
 # ==================== EyeLink API ====================
@@ -173,58 +162,3 @@ async def send_marker(marker: EyeLinkMarker):
             status_code=500,
             content={"ok": False, "error": "Failed to send marker"}
         )
-
-
-# ==================== 轮询 API ====================
-
-@router.get("/polling/status", tags=["Polling"])
-async def get_polling_status():
-    """获取轮询器状态"""
-    if data_poller is None:
-        return {"enabled": False, "running": False, "interval": 0}
-    
-    return {
-        "enabled": POLLING_ENABLED,
-        "running": data_poller.running,
-        "interval": data_poller.interval
-    }
-
-
-@router.post("/polling/start", tags=["Polling"])
-async def start_polling():
-    """启动数据轮询"""
-    if data_poller is None:
-        return JSONResponse(
-            status_code=400,
-            content={"ok": False, "error": "Poller not initialized"}
-        )
-    
-    data_poller.start()
-    return {"ok": True, "message": "Polling started"}
-
-
-@router.post("/polling/stop", tags=["Polling"])
-async def stop_polling():
-    """停止数据轮询"""
-    if data_poller is None:
-        return {"ok": True, "message": "Poller not initialized"}
-    
-    data_poller.stop()
-    return {"ok": True, "message": "Polling stopped"}
-
-
-@router.post("/polling/data", tags=["Polling"])
-async def add_polling_data(data: Dict[str, Any]):
-    """
-    手动添加数据到轮询队列
-    
-    用于测试或手动注入数据
-    """
-    if data_poller is None:
-        return JSONResponse(
-            status_code=400,
-            content={"ok": False, "error": "Poller not initialized"}
-        )
-    
-    data_poller.add_data(data)
-    return {"ok": True, "message": "Data added to queue"}

@@ -23,9 +23,6 @@ def test_imports():
         import eyelink_manager
         print(f"✓ eyelink_manager (PyLink available: {eyelink_manager.EYELINK_AVAILABLE})")
         
-        import data_poller
-        print("✓ data_poller")
-        
         import api_routes
         print("✓ api_routes")
         
@@ -51,7 +48,8 @@ def test_config():
         print(f"  PORT: {config.PORT}")
         print(f"  LOG_LEVEL: {config.LOG_LEVEL}")
         print(f"  EYELINK_HOST_IP: {config.EYELINK_HOST_IP}")
-        print(f"  POLLING_ENABLED: {config.POLLING_ENABLED}")
+        print(f"  EYELINK_AUTO_CONNECT: {config.EYELINK_AUTO_CONNECT}")
+        print(f"  EYELINK_AUTO_RECORD: {config.EYELINK_AUTO_RECORD}")
         
         print("✓ Configuration loaded")
         return True
@@ -101,26 +99,6 @@ def test_eyelink_manager():
         return False
 
 
-def test_data_poller():
-    """测试数据轮询器"""
-    print("\nTesting data poller...")
-    
-    try:
-        from data_poller import DataPoller
-        
-        poller = DataPoller(interval=1.0)
-        poller.add_data({"test": "data"})
-        data = poller.get_pending_data()
-        
-        print(f"  Retrieved {len(data)} item(s)")
-        print("✓ Data poller working")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Data poller test failed: {e}")
-        return False
-
-
 def main():
     """运行所有测试"""
     print("=" * 50)
@@ -131,8 +109,7 @@ def main():
         test_imports,
         test_config,
         test_models,
-        test_eyelink_manager,
-        test_data_poller
+        test_eyelink_manager
     ]
     
     passed = sum(1 for test in tests if test())

@@ -1,6 +1,6 @@
 # MAIC JSON Service
 
-集成 EyeLink 1000 Plus 眼动仪的数据收集服务，支持实时标记和轮询机制。
+集成 EyeLink 1000 Plus 眼动仪的数据收集服务。服务启动时自动连接 EyeLink，接收 MAIC 服务器通过 `/ingest` 端点发送的消息并实时打标记。
 
 ## 快速开始
 
@@ -27,8 +27,9 @@ python main.py
 ├── models.py            # 数据模型
 ├── utils.py             # 工具函数
 ├── eyelink_manager.py   # 眼动仪管理
-├── data_poller.py       # 数据轮询器
 ├── api_routes.py        # API 路由
+├── debug_eyelink.py     # EyeLink 调试工具
+├── check_network.sh     # 网络检查脚本
 ├── requirements.txt     # 依赖包
 └── config_example.env   # 配置示例
 ```
@@ -43,18 +44,27 @@ curl -X POST http://localhost:8123/ingest \
   -d '{"event": "test", "data": {"key": "value"}}'
 ```
 
-### 2. EyeLink 集成
+### 2. EyeLink 自动集成
+
+服务启动时会自动：
+1. 连接到 EyeLink 眼动仪（默认 IP: 100.1.1.1）
+2. 开始记录眼动数据到 EDF 文件
+3. 等待 MAIC 服务器发送消息
+
+当 MAIC 服务器通过 `/ingest` 发送消息时，服务会自动将消息作为标记发送到 EyeLink。
+
+也可以手动控制：
 
 ```python
 import requests
 
-# 连接眼动仪
+# 手动连接眼动仪（如果自动连接失败）
 requests.post("http://localhost:8123/eyelink/connect")
 
-# 开始记录
+# 手动开始记录
 requests.post("http://localhost:8123/eyelink/start_recording")
 
-# 发送标记
+# 手动发送标记
 requests.post("http://localhost:8123/eyelink/marker", json={
     "marker_type": "trial_start",
     "message": "Trial 1",
@@ -89,10 +99,11 @@ EYELINK_HOST_IP=100.1.1.1
 EYELINK_DUMMY_MODE=false
 EYELINK_SCREEN_WIDTH=1920
 EYELINK_SCREEN_HEIGHT=1080
+EYELINK_EDF_FILENAME=experiment.edf
 
-# 轮询配置
-POLLING_ENABLED=true
-POLLING_INTERVAL=0.1
+# 自动连接配置
+EYELINK_AUTO_CONNECT=true   # 启动时自动连接 EyeLink
+EYELINK_AUTO_RECORD=true    # 连接后自动开始记录
 ```
 
 ## API 端点
@@ -106,16 +117,11 @@ POLLING_INTERVAL=0.1
 ### EyeLink
 
 - `GET /eyelink/status` - 查看状态
-- `POST /eyelink/connect` - 连接
-- `POST /eyelink/start_recording` - 开始记录
+- `POST /eyelink/connect` - 手动连接（通常不需要，启动时自动连接）
+- `POST /eyelink/disconnect` - 断开连接
+- `POST /eyelink/start_recording` - 手动开始记录（通常不需要，自动开始）
 - `POST /eyelink/stop_recording` - 停止记录
-- `POST /eyelink/marker` - 发送标记
-
-### 轮询
-
-- `GET /polling/status` - 查看状态
-- `POST /polling/start` - 启动轮询
-- `POST /polling/stop` - 停止轮询
+- `POST /eyelink/marker` - 手动发送标记
 
 ## 注意事项
 
@@ -128,16 +134,14 @@ POLLING_INTERVAL=0.1
 - EDF 文件名限制：最多 8 个字符
 - 虚拟模式：设置 `EYELINK_DUMMY_MODE=true` 用于测试
 
-### 数据轮询
+### 数据流程
 
-要自定义轮询逻辑，编辑 `data_poller.py` 中的 `_fetch_external_data` 方法：
+1. **MAIC 服务器** → 发送消息到 `http://SERVER_IP:8123/ingest`
+2. **本服务** → 接收消息，保存到日志文件
+3. **本服务** → 自动发送标记到 EyeLink 眼动仪
+4. **EyeLink** → 在眼动数据中记录标记
 
-```python
-def _fetch_external_data(self):
-    # 实现你的数据获取逻辑
-    # 例如：从数据库查询、调用 API 等
-    pass
-```
+消息频率完全由 MAIC 服务器控制，本服务只负责接收和转发。
 
 ## 开发
 
@@ -150,7 +154,7 @@ black *.py
 flake8 *.py
 
 # 运行测试
-python test_core_modules.py
+python test.py
 ```
 
 ## 调试工具
