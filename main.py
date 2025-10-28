@@ -9,6 +9,7 @@ MAIC JSON Service - 主服务文件
 import json
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -16,7 +17,6 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-import api_routes
 import config
 from eyelink_manager import EYELINK_AVAILABLE, eyelink_manager
 from models import AckResponse, EyeLinkMarker, IngressPayload, MarkerType
@@ -32,22 +32,13 @@ logger = logging.getLogger(__name__)
 # 初始化必要的目录
 config.init_directories()
 
-# 创建 FastAPI 应用
-app = FastAPI(
-    title=config.APP_NAME,
-    version=config.APP_VERSION,
-    description="集成 EyeLink 眼动仪的数据收集服务"
-)
-
-# 注册路由
-app.include_router(api_routes.router)
-
 
 # ==================== 生命周期事件 ====================
 
-@app.on_event("startup")
-async def on_startup():
-    """应用启动时的初始化"""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # 启动
     logger.info(f"Starting {config.APP_NAME} v{config.APP_VERSION} on port {config.PORT}")
     
     # 打印配置信息（便于调试）
@@ -57,43 +48,41 @@ async def on_startup():
     if not EYELINK_AVAILABLE:
         logger.warning("⚠️  PyLink 不可用 - EyeLink 功能已禁用")
         logger.warning("如需使用眼动仪，请安装 EyeLink Developers Kit")
-        return
-    
-    logger.info("✓ PyLink 可用 - EyeLink 功能已启用")
-    
-    # 自动连接 EyeLink
-    if config.EYELINK_AUTO_CONNECT:
-        logger.info("正在自动连接 EyeLink...")
-        success = eyelink_manager.connect(
-            host_ip=config.EYELINK_HOST_IP,
-            dummy_mode=config.EYELINK_DUMMY_MODE,
-            screen_width=config.EYELINK_SCREEN_WIDTH,
-            screen_height=config.EYELINK_SCREEN_HEIGHT
-        )
-        
-        if success:
-            logger.info("✅ EyeLink 连接成功")
-            
-            # 自动开始记录
-            if config.EYELINK_AUTO_RECORD:
-                logger.info("正在自动开始记录...")
-                record_success = eyelink_manager.start_recording(
-                    edf_filename=config.EYELINK_EDF_FILENAME
-                )
-                if record_success:
-                    logger.info("✅ 记录已开始")
-                else:
-                    logger.error("❌ 开始记录失败")
-        else:
-            logger.error("❌ EyeLink 连接失败")
-            logger.error("服务将继续运行，但 EyeLink 功能不可用")
     else:
-        logger.info("自动连接已禁用，请手动调用 /eyelink/connect")
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    """应用关闭时的清理"""
+        logger.info("✓ PyLink 可用 - EyeLink 功能已启用")
+        
+        # 自动连接 EyeLink
+        if config.EYELINK_AUTO_CONNECT:
+            logger.info("正在自动连接 EyeLink...")
+            success = eyelink_manager.connect(
+                host_ip=config.EYELINK_HOST_IP,
+                dummy_mode=config.EYELINK_DUMMY_MODE,
+                screen_width=config.EYELINK_SCREEN_WIDTH,
+                screen_height=config.EYELINK_SCREEN_HEIGHT
+            )
+            
+            if success:
+                logger.info("✅ EyeLink 连接成功")
+                
+                # 自动开始记录
+                if config.EYELINK_AUTO_RECORD:
+                    logger.info("正在自动开始记录...")
+                    record_success = eyelink_manager.start_recording(
+                        edf_filename=config.EYELINK_EDF_FILENAME
+                    )
+                    if record_success:
+                        logger.info("✅ 记录已开始")
+                    else:
+                        logger.error("❌ 开始记录失败")
+            else:
+                logger.error("❌ EyeLink 连接失败")
+                logger.error("服务将继续运行，但 EyeLink 功能不可用")
+        else:
+            logger.info("自动连接已禁用，请手动调用 /eyelink/connect")
+    
+    yield
+    
+    # 关闭
     logger.info(f"Shutting down {config.APP_NAME}")
     
     # 停止记录并断开眼动仪
@@ -111,6 +100,15 @@ async def on_shutdown():
         logger.info("✓ EyeLink 清理完成")
     except Exception as e:
         logger.error(f"EyeLink 清理时出错: {e}")
+
+
+# 创建 FastAPI 应用
+app = FastAPI(
+    title=config.APP_NAME,
+    version=config.APP_VERSION,
+    description="集成 EyeLink 眼动仪的数据收集服务",
+    lifespan=lifespan
+)
 
 
 # ==================== 核心API ====================

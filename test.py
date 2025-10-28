@@ -1,14 +1,18 @@
+#!/usr/bin/env python3
 """
-简单测试脚本
-验证所有模块是否能正常导入
+MAIC 服务测试脚本
+跨平台兼容的测试工具
 """
 
+import os
 import sys
+import platform
+from pathlib import Path
 
 
 def test_imports():
     """测试模块导入"""
-    print("Testing module imports...")
+    print("测试模块导入...")
     
     try:
         import config
@@ -21,91 +25,126 @@ def test_imports():
         print("✓ utils")
         
         import eyelink_manager
-        print(f"✓ eyelink_manager (PyLink available: {eyelink_manager.EYELINK_AVAILABLE})")
-        
-        import api_routes
-        print("✓ api_routes")
+        print(f"✓ eyelink_manager (PyLink: {eyelink_manager.EYELINK_AVAILABLE})")
         
         import main
         print("✓ main")
         
-        print("\n✅ All modules imported successfully!")
+        print("✅ 所有模块导入成功")
         return True
         
     except Exception as e:
-        print(f"\n❌ Import failed: {e}")
+        print(f"❌ 导入失败: {e}")
         return False
 
 
 def test_config():
     """测试配置"""
-    print("\nTesting configuration...")
+    print("\n测试配置...")
     
     try:
         import config
         
-        print(f"  APP_NAME: {config.APP_NAME}")
-        print(f"  PORT: {config.PORT}")
-        print(f"  LOG_LEVEL: {config.LOG_LEVEL}")
-        print(f"  EYELINK_HOST_IP: {config.EYELINK_HOST_IP}")
-        print(f"  EYELINK_AUTO_CONNECT: {config.EYELINK_AUTO_CONNECT}")
-        print(f"  EYELINK_AUTO_RECORD: {config.EYELINK_AUTO_RECORD}")
+        print(f"  应用: {config.APP_NAME}")
+        print(f"  端口: {config.PORT}")
+        print(f"  EyeLink IP: {config.EYELINK_HOST_IP}")
+        print(f"  虚拟模式: {config.EYELINK_DUMMY_MODE}")
+        print(f"  自动连接: {config.EYELINK_AUTO_CONNECT}")
         
-        print("✓ Configuration loaded")
+        print("✓ 配置正常")
         return True
         
     except Exception as e:
-        print(f"❌ Config test failed: {e}")
+        print(f"❌ 配置测试失败: {e}")
         return False
 
 
 def test_models():
     """测试数据模型"""
-    print("\nTesting models...")
+    print("\n测试数据模型...")
     
     try:
         from models import EyeLinkMarker, MarkerType
         
         marker = EyeLinkMarker(
             marker_type=MarkerType.MESSAGE,
-            message="Test marker",
+            message="测试标记",
             trial_id="test_001"
         )
         
-        print(f"  Created marker: {marker.message}")
-        print("✓ Models working")
+        print(f"  创建标记: {marker.message}")
+        print("✓ 数据模型正常")
         return True
         
     except Exception as e:
-        print(f"❌ Models test failed: {e}")
+        print(f"❌ 数据模型测试失败: {e}")
         return False
 
 
 def test_eyelink_manager():
     """测试 EyeLink 管理器"""
-    print("\nTesting EyeLink manager...")
+    print("\n测试 EyeLink 管理器...")
     
     try:
         from eyelink_manager import eyelink_manager
         
         status = eyelink_manager.get_status()
-        print(f"  Status: {status.status.value}")
-        print(f"  Connected: {status.connected}")
-        print("✓ EyeLink manager working")
+        print(f"  状态: {status.status.value}")
+        print(f"  已连接: {status.connected}")
+        print("✓ EyeLink 管理器正常")
         return True
         
     except Exception as e:
-        print(f"❌ EyeLink manager test failed: {e}")
+        print(f"❌ EyeLink 管理器测试失败: {e}")
         return False
 
 
+def test_env_file():
+    """测试 .env 文件"""
+    print("\n测试 .env 文件...")
+    
+    env_file = Path(".env")
+    if env_file.exists():
+        print(f"✓ 找到 .env 文件: {env_file}")
+        
+        # 显示关键配置
+        with open(env_file, 'r', encoding='utf-8') as f:
+            lines = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+            print(f"  配置项数量: {len(lines)}")
+        
+        return True
+    else:
+        print("⚠️  未找到 .env 文件")
+        print("  可以复制 config_example.env 为 .env")
+        return False
+
+
+def test_platform():
+    """测试平台兼容性"""
+    print("\n平台信息:")
+    print(f"  系统: {platform.system()}")
+    print(f"  版本: {platform.version()}")
+    print(f"  架构: {platform.machine()}")
+    print(f"  Python: {sys.version.split()[0]}")
+    
+    # 检查网络工具
+    if platform.system() == "Windows":
+        print("  Windows 平台 - 使用 ping 命令")
+    else:
+        print("  Unix/Linux 平台 - 使用 ping 命令")
+    
+    return True
+
+
 def main():
-    """运行所有测试"""
+    """主测试函数"""
     print("=" * 50)
-    print("MAIC Service - Module Tests")
+    print("MAIC 服务测试")
     print("=" * 50)
     
     tests = [
+        test_platform,
+        test_env_file,
         test_imports,
         test_config,
         test_models,
@@ -116,14 +155,21 @@ def main():
     total = len(tests)
     
     print("\n" + "=" * 50)
-    print(f"Results: {passed}/{total} tests passed")
+    print(f"测试结果: {passed}/{total} 通过")
     print("=" * 50)
     
     if passed == total:
-        print("🎉 All tests passed!")
+        print("🎉 所有测试通过!")
+        print("\n下一步:")
+        print("1. 启动服务: python main.py")
+        print("2. 测试连接: python debug_eyelink.py --dummy")
         return 0
     else:
-        print("❌ Some tests failed")
+        print("❌ 部分测试失败")
+        print("\n建议:")
+        print("1. 检查依赖安装: pip install -r requirements.txt")
+        print("2. 检查 .env 文件配置")
+        print("3. 查看错误信息")
         return 1
 
 

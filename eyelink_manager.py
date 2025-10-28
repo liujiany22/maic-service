@@ -71,22 +71,14 @@ class EyeLinkManager:
             - 实际硬件连接可能需要调整网络配置
             - 虚拟模式用于测试，不记录真实数据
         """
-        logger.info("=" * 60)
-        logger.info("开始 EyeLink 连接调试")
-        logger.info("=" * 60)
+        logger.info("连接 EyeLink...")
         
         # 检查 PyLink 可用性
         if not EYELINK_AVAILABLE:
             self.error_message = "PyLink library not available. Install EyeLink Developers Kit."
             self.status = EyeLinkStatus.ERROR
-            logger.error("❌ " + self.error_message)
-            logger.error("请检查:")
-            logger.error("  1. 是否已安装 EyeLink Developers Kit")
-            logger.error("  2. Python 是否能找到 pylink 模块")
-            logger.error("  3. 尝试: python -c 'import pylink; print(pylink.__version__)'")
+            logger.error("PyLink 不可用，请安装 EyeLink Developers Kit")
             return False
-        
-        logger.info(f"✓ PyLink 模块已加载: {pylink}")
         
         try:
             with self._lock:
@@ -100,105 +92,25 @@ class EyeLinkManager:
                 
                 # 创建连接
                 if dummy_mode:
-                    logger.warning("⚠️  使用虚拟模式 (Dummy Mode)")
-                    logger.info("  - 不会连接真实硬件")
-                    logger.info("  - 适合测试代码逻辑")
-                    try:
-                        self.tracker = pylink.EyeLink(None)
-                        logger.info("✓ 虚拟连接创建成功")
-                    except Exception as e:
-                        logger.error(f"❌ 虚拟连接创建失败: {e}")
-                        raise
+                    logger.info("使用虚拟模式")
+                    self.tracker = pylink.EyeLink(None)
                 else:
-                    logger.info(f"尝试连接到真实设备: {host_ip}")
-                    logger.info("请确保:")
-                    logger.info("  1. EyeLink 主机已开机")
-                    logger.info("  2. 网络连接正常 (可以先 ping 测试)")
-                    logger.info("  3. 主机 IP 地址正确")
-                    logger.info("  4. 防火墙未阻止连接")
-                    
-                    try:
-                        # 尝试创建连接
-                        logger.info("正在创建连接对象...")
-                        self.tracker = pylink.EyeLink(host_ip)
-                        logger.info("✓ 连接对象创建成功")
-                        
-                        # 检查连接状态
-                        if self.tracker.isConnected():
-                            logger.info("✓ 设备连接确认成功")
-                        else:
-                            logger.warning("⚠️  连接对象创建了，但 isConnected() 返回 False")
-                        
-                        # 获取设备信息
-                        try:
-                            version = self.tracker.getTrackerVersion()
-                            logger.info(f"✓ 设备版本: {version}")
-                        except Exception as e:
-                            logger.warning(f"⚠️  无法获取设备版本: {e}")
-                            
-                    except RuntimeError as e:
-                        logger.error(f"❌ 连接失败 (RuntimeError): {e}")
-                        logger.error("常见原因:")
-                        logger.error("  1. IP 地址错误或设备未开机")
-                        logger.error("  2. 网络不通 (尝试: ping {})".format(host_ip))
-                        logger.error("  3. EyeLink 软件未运行")
-                        logger.error("  4. 端口被占用或防火墙阻止")
-                        raise
-                    except Exception as e:
-                        logger.error(f"❌ 连接失败 (未知错误): {type(e).__name__}: {e}")
-                        raise
+                    logger.info(f"连接到设备: {host_ip}")
+                    self.tracker = pylink.EyeLink(host_ip)
                 
                 # 配置屏幕坐标
-                logger.info("配置屏幕参数...")
-                try:
-                    screen_cmd = f"screen_pixel_coords 0 0 {screen_width-1} {screen_height-1}"
-                    logger.debug(f"发送命令: {screen_cmd}")
-                    self.tracker.sendCommand(screen_cmd)
-                    logger.info("✓ screen_pixel_coords 设置成功")
-                    
-                    display_msg = f"DISPLAY_COORDS 0 0 {screen_width-1} {screen_height-1}"
-                    logger.debug(f"发送消息: {display_msg}")
-                    self.tracker.sendMessage(display_msg)
-                    logger.info("✓ DISPLAY_COORDS 设置成功")
-                    
-                except Exception as e:
-                    logger.error(f"❌ 配置屏幕参数失败: {e}")
-                    raise
+                self.tracker.sendCommand(f"screen_pixel_coords 0 0 {screen_width-1} {screen_height-1}")
+                self.tracker.sendMessage(f"DISPLAY_COORDS 0 0 {screen_width-1} {screen_height-1}")
                 
                 self.status = EyeLinkStatus.CONNECTED
                 self.error_message = None
-                
-                logger.info("=" * 60)
-                logger.info("✅ EyeLink 连接成功!")
-                logger.info("=" * 60)
+                logger.info("EyeLink 连接成功")
                 return True
                 
         except Exception as e:
             self.error_message = f"Connection failed: {str(e)}"
             self.status = EyeLinkStatus.ERROR
-            logger.error("=" * 60)
-            logger.error(f"❌ 连接失败: {self.error_message}")
-            logger.error("=" * 60)
-            logger.exception("详细错误信息:")
-            
-            # 提供排查建议
-            logger.info("")
-            logger.info("排查建议:")
-            logger.info("1. 检查网络连接:")
-            logger.info(f"   ping {host_ip}")
-            logger.info("")
-            logger.info("2. 检查 EyeLink 主机状态:")
-            logger.info("   - 主机是否开机")
-            logger.info("   - EyeLink 软件是否运行")
-            logger.info("")
-            logger.info("3. 验证 IP 地址:")
-            logger.info("   - 默认应该是 100.1.1.1")
-            logger.info("   - 检查 EyeLink 主机配置")
-            logger.info("")
-            logger.info("4. 尝试虚拟模式测试:")
-            logger.info("   export EYELINK_DUMMY_MODE=true")
-            logger.info("   python main.py")
-            
+            logger.error(f"连接失败: {self.error_message}")
             return False
     
     def disconnect(self) -> None:

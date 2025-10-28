@@ -1,10 +1,31 @@
 """
 配置管理模块
-统一管理所有配置项，支持环境变量覆盖
+统一管理所有配置项，支持环境变量和 .env 文件
 """
 
 import os
 from pathlib import Path
+
+# 加载 .env 文件
+def load_env_file():
+    """加载 .env 文件到环境变量"""
+    env_file = Path(__file__).parent / ".env"
+    if env_file.exists():
+        with open(env_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    # 移除引号
+                    if value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    elif value.startswith("'") and value.endswith("'"):
+                        value = value[1:-1]
+                    os.environ[key] = value
+
+load_env_file()
 
 # ==================== 基础配置 ====================
 BASE_DIR = Path(__file__).resolve().parent
@@ -41,28 +62,10 @@ def init_directories():
 
 
 def print_config():
-    """打印当前配置（用于调试）"""
+    """打印当前配置"""
     import logging
     logger = logging.getLogger(__name__)
     
-    logger.info("=" * 60)
-    logger.info("当前配置:")
-    logger.info("=" * 60)
-    logger.info(f"应用名称: {APP_NAME}")
-    logger.info(f"版本: {APP_VERSION}")
-    logger.info(f"端口: {PORT}")
-    logger.info(f"日志级别: {LOG_LEVEL}")
-    logger.info("")
-    logger.info("EyeLink 配置:")
-    logger.info(f"  主机 IP: {EYELINK_HOST_IP}")
-    logger.info(f"  虚拟模式: {EYELINK_DUMMY_MODE}")
-    logger.info(f"  屏幕尺寸: {EYELINK_SCREEN_WIDTH} x {EYELINK_SCREEN_HEIGHT}")
-    logger.info(f"  EDF 文件: {EYELINK_EDF_FILENAME}")
-    logger.info(f"  自动连接: {EYELINK_AUTO_CONNECT}")
-    logger.info(f"  自动记录: {EYELINK_AUTO_RECORD}")
-    logger.info("")
-    logger.info("目录:")
-    logger.info(f"  数据目录: {LOG_DIR}")
-    logger.info(f"  日志目录: {SERVICE_LOG_DIR}")
-    logger.info("=" * 60)
+    logger.info(f"启动 {APP_NAME} v{APP_VERSION} 端口:{PORT}")
+    logger.info(f"EyeLink: {EYELINK_HOST_IP} 虚拟:{EYELINK_DUMMY_MODE} 自动连接:{EYELINK_AUTO_CONNECT}")
 
