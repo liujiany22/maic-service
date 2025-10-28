@@ -119,7 +119,7 @@ def start_experiment_control():
                         print("实验已在运行")
                         continue
                     
-                    success = eyelink_manager.start_recording("test.edf")
+                    success = eyelink_manager.start_recording(config.EYELINK_EDF_FILENAME)
                     if success:
                         experiment_running = True
                         print("✓ 记录已开始")

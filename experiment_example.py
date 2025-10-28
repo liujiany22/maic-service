@@ -46,7 +46,7 @@ def run_experiment():
     
     # 4. 开始记录
     print("4. 开始记录...")
-    eyelink_manager.start_recording("test.edf")
+    eyelink_manager.start_recording(config.EYELINK_EDF_FILENAME)
     print("✓ 记录已开始\n")
     
     # 5. 实验进行中 - 发送标记
