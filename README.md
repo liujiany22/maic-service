@@ -17,6 +17,11 @@ pip install -r requirements.txt
 python main.py
 ```
 
+**注意**: 
+- 校准和验证功能需要 `pygame` 库（已包含在 requirements.txt）
+- pygame 会创建全屏窗口进行校准
+- 如果使用远程服务器或无图形界面环境，可以使用 dummy 模式测试
+
 服务将在 http://localhost:8123 启动，访问 http://localhost:8123/docs 查看 API 文档。
 
 ## 项目结构
@@ -27,6 +32,7 @@ python main.py
 ├── models.py            # 数据模型
 ├── utils.py             # 工具函数
 ├── eyelink_manager.py   # 眼动仪管理
+├── eyelink_graphics.py  # 眼动仪图形界面（pygame）
 ├── custom_control.py    # 🔧 自定义控制逻辑（用户编辑）
 ├── debug_eyelink.py     # EyeLink 调试工具
 ├── check_network.sh     # 网络检查脚本
@@ -46,19 +52,24 @@ python main.py
 2. **找到你需要的示例代码**
 3. **取消注释并根据需要修改**
 
-### 功能示例
+### 实验控制流程
 
-#### 1. 键盘控制
+服务启动后，会显示实验控制提示符。按照以下流程操作：
 
-```python
-# 在 custom_control.py 的 keyboard_control_example() 中取消注释
-# 启用后可以通过命令行输入控制 EyeLink
-
-EyeLink > start       # 开始记录
-EyeLink > stop        # 停止记录
-EyeLink > calibrate   # 校准
-EyeLink > status      # 查看状态
+```bash
+实验控制 > c        # 1. 校准 (Calibration)
+实验控制 > v        # 2. 验证 (Validation)
+实验控制 > start    # 3. 开始记录并进入实验
+实验控制 > end      # 4. 结束记录并保存文件
 ```
+
+完整命令列表：
+- `c` - 开始校准
+- `v` - 开始验证
+- `start` - 开始记录并进入实验
+- `end` - 结束记录并保存文件到 `logdata/eyelink_data/`
+- `status` - 查看当前状态
+- `quit` - 退出控制
 
 #### 2. 响应 MAIC 消息
 

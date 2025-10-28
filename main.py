@@ -88,17 +88,7 @@ async def lifespan(app: FastAPI):
             
             if success:
                 logger.info("✅ EyeLink 连接成功")
-                
-                # 自动开始记录
-                if config.EYELINK_AUTO_RECORD:
-                    logger.info("正在自动开始记录...")
-                    record_success = eyelink_manager.start_recording(
-                        edf_filename=config.EYELINK_EDF_FILENAME
-                    )
-                    if record_success:
-                        logger.info("✅ 记录已开始")
-                    else:
-                        logger.error("❌ 开始记录失败")
+                logger.info("💡 使用自定义控制来管理实验流程")
             else:
                 logger.error("❌ EyeLink 连接失败")
                 logger.error("服务将继续运行，但 EyeLink 功能不可用")

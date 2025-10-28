@@ -18,6 +18,16 @@ from typing import Optional
 # 导入 EyeLink 管理器
 from eyelink_manager import eyelink_manager, EYELINK_AVAILABLE
 
+# 导入图形界面支持
+from eyelink_graphics import (
+    setup_graphics, 
+    close_graphics, 
+    do_tracker_setup, 
+    do_drift_correct,
+    PYGAME_AVAILABLE, 
+    PYLINK_AVAILABLE
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -251,16 +261,8 @@ def initialize_custom_control():
     
     logger.info("初始化自定义控制模块...")
     
-    # 启用你需要的功能（取消注释）：
-    
-    # 1. 键盘控制
-    # keyboard_control_example()
-    
-    # 2. 周期性任务
-    # start_periodic_task()
-    
-    # 3. 其他自定义初始化
-    # your_custom_function()
+    # 启动实验控制
+    start_experiment_control()
     
     logger.info("自定义控制模块初始化完成")
 
@@ -319,6 +321,280 @@ def quick_marker(message: str) -> bool:
 # 你的自定义代码区域
 # ============================================================
 
-# 在下面添加你自己的函数和逻辑：
+# 实验控制函数
+def start_experiment_control():
+    """
+    实验控制主函数
+    
+    命令：
+    - c: 开始校准
+    - v: 开始验证
+    - start: 开始记录并进入实验
+    - end: 结束记录并保存文件
+    - status: 查看状态
+    - quit: 退出
+    """
+    
+    def experiment_loop():
+        """实验控制循环"""
+        import os
+        from pathlib import Path
+        from datetime import datetime
+        
+        # 实验状态
+        experiment_running = False
+        
+        logger.info("=" * 60)
+        logger.info("实验控制已启动")
+        logger.info("=" * 60)
+        logger.info("可用命令:")
+        logger.info("  c      - 开始校准 (Calibration)")
+        logger.info("  v      - 开始验证 (Validation)")
+        logger.info("  start  - 开始记录并进入实验")
+        logger.info("  end    - 结束记录并保存文件")
+        logger.info("  status - 查看状态")
+        logger.info("  quit   - 退出")
+        logger.info("=" * 60)
+        
+        while True:
+            try:
+                cmd = input("\n实验控制 > ").strip().lower()
+                
+                # 校准
+                if cmd == "c":
+                    logger.info("开始校准...")
+                    tracker = get_eyelink_tracker()
+                    
+                    if not tracker:
+                        logger.error("❌ EyeLink 未连接")
+                        continue
+                    
+                    if not PYGAME_AVAILABLE:
+                        logger.error("❌ pygame 不可用，无法进行校准")
+                        logger.info("请安装 pygame: pip install pygame")
+                        continue
+                    
+                    try:
+                        # 获取屏幕尺寸
+                        import config
+                        width = config.EYELINK_SCREEN_WIDTH
+                        height = config.EYELINK_SCREEN_HEIGHT
+                        
+                        logger.info(f"正在进入校准模式... (屏幕: {width}x{height})")
+                        
+                        # 调用校准
+                        success = do_tracker_setup(tracker, width, height)
+                        
+                        if success:
+                            logger.info("✅ 校准完成")
+                        else:
+                            logger.error("❌ 校准失败")
+                        
+                    except Exception as e:
+                        logger.error(f"校准过程出错: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+                # 验证
+                elif cmd == "v":
+                    logger.info("开始验证...")
+                    tracker = get_eyelink_tracker()
+                    
+                    if not tracker:
+                        logger.error("❌ EyeLink 未连接")
+                        continue
+                    
+                    if not PYGAME_AVAILABLE:
+                        logger.error("❌ pygame 不可用，无法进行验证")
+                        logger.info("请安装 pygame: pip install pygame")
+                        continue
+                    
+                    try:
+                        # 获取屏幕尺寸
+                        import config
+                        width = config.EYELINK_SCREEN_WIDTH
+                        height = config.EYELINK_SCREEN_HEIGHT
+                        
+                        logger.info(f"正在进入验证模式... (屏幕: {width}x{height})")
+                        
+                        # 验证实际上就是再次调用 doTrackerSetup
+                        # 在 setup 界面中可以选择 validate
+                        success = do_tracker_setup(tracker, width, height)
+                        
+                        if success:
+                            logger.info("✅ 验证完成")
+                        else:
+                            logger.error("❌ 验证失败")
+                        
+                    except Exception as e:
+                        logger.error(f"验证过程出错: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+                # 开始实验
+                elif cmd == "start":
+                    if experiment_running:
+                        logger.warning("⚠️  实验已在运行中")
+                        continue
+                    
+                    logger.info("开始记录并进入实验...")
+                    
+                    # 开始记录
+                    success = eyelink_manager.start_recording()
+                    
+                    if success:
+                        experiment_running = True
+                        logger.info("✅ 记录已开始")
+                        logger.info("✅ 实验已开始")
+                        logger.info("💡 校准/验证界面已关闭，实验正在进行中...")
+                        logger.info("💡 输入 'end' 来结束实验")
+                        
+                        # 发送实验开始标记
+                        quick_marker("EXPERIMENT_START")
+                        
+                        # 如果有图形界面，关闭校准窗口
+                        tracker = get_eyelink_tracker()
+                        if tracker:
+                            try:
+                                # 退出 setup 模式（如果在 setup 中）
+                                tracker.exitCalibration()
+                            except:
+                                pass  # 如果不在 setup 模式，会报错，忽略即可
+                    else:
+                        logger.error("❌ 开始记录失败")
+                
+                # 结束实验
+                elif cmd == "end":
+                    if not experiment_running:
+                        logger.warning("⚠️  实验未在运行")
+                        # 但仍然尝试停止记录（如果有的话）
+                        if eyelink_manager.get_status().recording:
+                            logger.info("检测到正在记录，尝试停止...")
+                        else:
+                            continue
+                    
+                    logger.info("结束实验并保存文件...")
+                    
+                    # 发送实验结束标记
+                    quick_marker("EXPERIMENT_END")
+                    
+                    # 停止记录
+                    success = eyelink_manager.stop_recording()
+                    
+                    if success:
+                        experiment_running = False
+                        logger.info("✅ 记录已停止")
+                        logger.info("✅ 实验已结束")
+                        
+                        # 保存文件到本地
+                        logger.info("正在保存 EDF 文件到本地...")
+                        
+                        # 创建保存目录
+                        import config
+                        save_dir = config.LOG_DIR / "eyelink_data"
+                        save_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        # 生成文件名
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        edf_filename = f"experiment_{timestamp}.edf"
+                        local_path = save_dir / edf_filename
+                        
+                        logger.info(f"保存路径: {local_path}")
+                        
+                        # 注意：实际的文件传输需要根据 EyeLink 配置
+                        # 这里提供手动传输指导
+                        logger.info("=" * 60)
+                        logger.info("EDF 文件保存指导:")
+                        logger.info("=" * 60)
+                        logger.info("1. 在 EyeLink 主机上找到 EDF 文件")
+                        logger.info(f"   文件名: {eyelink_manager.edf_file or config.EYELINK_EDF_FILENAME}")
+                        logger.info("   位置: EyeLink 主机工作目录")
+                        logger.info("")
+                        logger.info("2. 通过以下方式传输到本地:")
+                        logger.info("   - USB 存储设备")
+                        logger.info("   - 网络共享")
+                        logger.info("   - FTP/SFTP")
+                        logger.info("")
+                        logger.info(f"3. 保存到: {local_path}")
+                        logger.info("=" * 60)
+                        
+                        # 创建占位符文件
+                        placeholder_content = f"""# EyeLink EDF 文件占位符
+
+实验完成时间: {datetime.now().isoformat()}
+源文件名: {eyelink_manager.edf_file or config.EYELINK_EDF_FILENAME}
+目标路径: {local_path}
+
+请将 EDF 文件从 EyeLink 主机传输到此位置。
+传输完成后，请删除此占位符文件。
+
+传输方法:
+1. USB 存储设备
+2. 网络共享文件夹
+3. FTP/SFTP 传输
+4. EyeLink Data Viewer 软件
+"""
+                        
+                        placeholder_path = str(local_path) + ".placeholder.txt"
+                        with open(placeholder_path, 'w', encoding='utf-8') as f:
+                            f.write(placeholder_content)
+                        
+                        logger.info(f"✅ 占位符文件已创建: {placeholder_path}")
+                        logger.info("✅ 实验数据保存流程完成")
+                    else:
+                        logger.error("❌ 停止记录失败")
+                
+                # 查看状态
+                elif cmd == "status":
+                    status = eyelink_manager.get_status()
+                    logger.info("=" * 40)
+                    logger.info(f"EyeLink 状态: {status.status.value}")
+                    logger.info(f"已连接: {status.connected}")
+                    logger.info(f"正在记录: {status.recording}")
+                    logger.info(f"实验运行中: {experiment_running}")
+                    if status.edf_file:
+                        logger.info(f"EDF 文件: {status.edf_file}")
+                    logger.info("=" * 40)
+                
+                # 退出
+                elif cmd == "quit":
+                    if experiment_running:
+                        logger.warning("⚠️  实验正在运行，请先输入 'end' 结束实验")
+                        confirm = input("确认退出？(y/n): ").strip().lower()
+                        if confirm != 'y':
+                            continue
+                    
+                    logger.info("退出实验控制")
+                    break
+                
+                # 帮助
+                elif cmd == "help" or cmd == "h":
+                    logger.info("可用命令:")
+                    logger.info("  c      - 开始校准")
+                    logger.info("  v      - 开始验证")
+                    logger.info("  start  - 开始记录并进入实验")
+                    logger.info("  end    - 结束记录并保存文件")
+                    logger.info("  status - 查看状态")
+                    logger.info("  quit   - 退出")
+                
+                else:
+                    logger.warning(f"未知命令: {cmd}，输入 'help' 查看帮助")
+            
+            except (EOFError, KeyboardInterrupt):
+                logger.info("\n实验控制被中断")
+                break
+            except Exception as e:
+                logger.error(f"错误: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # 退出时清理
+        logger.info("清理图形界面...")
+        close_graphics()
+    
+    # 在后台线程启动
+    control_thread = threading.Thread(target=experiment_loop, daemon=True)
+    control_thread.start()
+    logger.info("实验控制线程已启动")
 
 

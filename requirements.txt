@@ -8,5 +8,8 @@ pydantic>=2.0.0
 # 跨平台支持
 psutil>=5.9.0  # 网络接口检测
 
+# 图形界面支持
+pygame>=2.5.0  # EyeLink 校准和验证界面
+
 # 注意：pylink 需要安装 EyeLink Developers Kit
 # 下载地址: https://www.sr-research.com/support/
