@@ -38,11 +38,25 @@ def start_experiment_control():
         print("\n" + "=" * 50)
         print("EyeLink 实验控制")
         print("=" * 50)
-        print("命令: c=校准 v=验证 d=漂移校正")
+        print("命令: connect=连接 c=校准 v=验证 d=漂移校正")
         print("      start=开始记录 end=结束记录")
         print("      marker <text>=发送标记")
         print("      status=状态 quit=退出")
         print("=" * 50 + "\n")
+        
+        # 自动连接
+        if config.EYELINK_AUTO_CONNECT and EYELINK_AVAILABLE:
+            logger.info("自动连接 EyeLink...")
+            success = eyelink_manager.connect(
+                host_ip=config.EYELINK_HOST_IP,
+                dummy_mode=config.EYELINK_DUMMY_MODE,
+                screen_width=config.EYELINK_SCREEN_WIDTH,
+                screen_height=config.EYELINK_SCREEN_HEIGHT
+            )
+            if success:
+                print("✓ 已连接\n")
+            else:
+                print("✗ 连接失败\n")
         
         while True:
             try:
@@ -53,8 +67,24 @@ def start_experiment_control():
                 parts = cmd.split(maxsplit=1)
                 action = parts[0].lower()
                 
+                # 连接
+                if action == "connect":
+                    if not EYELINK_AVAILABLE:
+                        print("错误: PyLink 未安装")
+                        continue
+                    success = eyelink_manager.connect(
+                        host_ip=config.EYELINK_HOST_IP,
+                        dummy_mode=config.EYELINK_DUMMY_MODE,
+                        screen_width=config.EYELINK_SCREEN_WIDTH,
+                        screen_height=config.EYELINK_SCREEN_HEIGHT
+                    )
+                    if success:
+                        print("✓ 已连接")
+                    else:
+                        print("✗ 连接失败")
+                
                 # 校准
-                if action == "c":
+                elif action == "c":
                     if not PYGAME_AVAILABLE:
                         print("错误: pygame 未安装")
                         continue

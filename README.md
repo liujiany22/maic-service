@@ -31,15 +31,16 @@ python main.py
 
 ## 实验控制
 
-服务启动后使用以下命令：
+服务启动后，如果启用自动连接会自动连接 EyeLink，否则手动连接：
 
 ```
+> connect        # 连接（如果未自动连接）
 > c              # 校准
 > v              # 验证  
 > d              # 漂移校正
-> start          # 开始记录
+> start          # 开始记录（使用 test.edf）
 > marker TEST    # 发送标记
-> end            # 结束并保存
+> end            # 结束并自动保存到 logdata/eyelink_data/
 > status         # 查看状态
 > quit           # 退出
 ```
@@ -119,9 +120,9 @@ EYELINK_AUTO_CONNECT=true
 
 ## 文件保存
 
-- 接收的消息保存在 `logdata/` 目录
-- EDF 文件保存在 `logdata/eyelink_data/` 目录
-- 文件名格式: `YYYYMMDD_HHMMSS_test.edf`
+- MAIC 消息: `logdata/YYYYMMDD-HHMMSS_<request_id>.txt`
+- EDF 文件: `logdata/eyelink_data/YYYYMMDD_HHMMSS_test.edf`
+- 使用 `end` 命令自动传输并保存
 
 ## 调试
 

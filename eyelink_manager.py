@@ -211,7 +211,7 @@ class EyeLinkManager:
                 logger.info(f"停止记录: {self.edf_file}")
                 self.tracker.stopRecording()
                 
-                # 如果需要保存到本地，先接收文件
+                # 保存到本地
                 if save_local and local_dir and self.edf_file:
                     from pathlib import Path
                     from datetime import datetime
@@ -219,16 +219,14 @@ class EyeLinkManager:
                     save_path = Path(local_dir)
                     save_path.mkdir(parents=True, exist_ok=True)
                     
-                    # 生成本地文件名
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     local_file = save_path / f"{timestamp}_{self.edf_file}"
                     
-                    logger.info(f"接收 EDF 文件: {local_file}")
                     try:
                         self.tracker.receiveDataFile(self.edf_file, str(local_file))
-                        logger.info(f"✓ 文件已保存: {local_file}")
+                        logger.info(f"✓ 已保存: {local_file}")
                     except Exception as e:
-                        logger.warning(f"文件传输失败 (可能需要手动传输): {e}")
+                        logger.error(f"传输失败: {e}")
                 
                 self.tracker.closeDataFile()
                 self.recording = False

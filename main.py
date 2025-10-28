@@ -63,62 +63,28 @@ def custom_eyelink_control():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    # 启动
-    logger.info(f"Starting {config.APP_NAME} v{config.APP_VERSION} on port {config.PORT}")
+    logger.info(f"Starting {config.APP_NAME} v{config.APP_VERSION}")
     
-    # 打印配置信息（便于调试）
-    config.print_config()
-    
-    # 检查 EyeLink 可用性
     if not EYELINK_AVAILABLE:
-        logger.warning("⚠️  PyLink 不可用 - EyeLink 功能已禁用")
-        logger.warning("如需使用眼动仪，请安装 EyeLink Developers Kit")
-    else:
-        logger.info("✓ PyLink 可用 - EyeLink 功能已启用")
-        
-        # 自动连接 EyeLink
-        if config.EYELINK_AUTO_CONNECT:
-            logger.info("正在自动连接 EyeLink...")
-            success = eyelink_manager.connect(
-                host_ip=config.EYELINK_HOST_IP,
-                dummy_mode=config.EYELINK_DUMMY_MODE,
-                screen_width=config.EYELINK_SCREEN_WIDTH,
-                screen_height=config.EYELINK_SCREEN_HEIGHT
-            )
-            
-            if success:
-                logger.info("✅ EyeLink 连接成功")
-                logger.info("💡 使用自定义控制来管理实验流程")
-            else:
-                logger.error("❌ EyeLink 连接失败")
-                logger.error("服务将继续运行，但 EyeLink 功能不可用")
-        else:
-            logger.info("自动连接已禁用")
+        logger.warning("PyLink 不可用")
     
-    # 调用自定义控制函数
-    logger.info("启动自定义控制...")
+    # 启动自定义控制
     custom_eyelink_control()
     
     yield
     
     # 关闭
-    logger.info(f"Shutting down {config.APP_NAME}")
+    logger.info("Shutting down")
     
-    # 停止记录并断开眼动仪
+    # 清理
     try:
         status = eyelink_manager.get_status()
-        
         if status.recording:
-            logger.info("停止 EyeLink 记录...")
             eyelink_manager.stop_recording()
-        
         if status.connected:
-            logger.info("断开 EyeLink 连接...")
             eyelink_manager.disconnect()
-            
-        logger.info("✓ EyeLink 清理完成")
     except Exception as e:
-        logger.error(f"EyeLink 清理时出错: {e}")
+        logger.error(f"清理错误: {e}")
 
 
 # 创建 FastAPI 应用
