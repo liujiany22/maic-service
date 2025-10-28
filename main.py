@@ -21,6 +21,7 @@ import config
 from eyelink_manager import EYELINK_AVAILABLE, eyelink_manager
 from models import AckResponse, EyeLinkMarker, IngressPayload, MarkerType
 from utils import generate_event_brief
+from custom_control import initialize_custom_control, handle_control_message
 
 # 初始化日志
 logging.basicConfig(
@@ -31,6 +32,30 @@ logger = logging.getLogger(__name__)
 
 # 初始化必要的目录
 config.init_directories()
+
+
+# ==================== 自定义控制区域 ====================
+# 
+# 这个区域供用户自定义 EyeLink 控制逻辑
+# 你可以在这里编写代码来响应特定的输入或事件
+# 
+
+def custom_eyelink_control():
+    """
+    自定义 EyeLink 控制函数
+    
+    这个函数会在服务启动时被调用。
+    实际的自定义逻辑请在 custom_control.py 文件中编写。
+    
+    custom_control.py 提供了：
+    1. 键盘控制示例
+    2. 消息处理示例
+    3. 定时任务示例
+    4. 便捷的工具函数
+    
+    直接编辑 custom_control.py 来添加你的自定义逻辑。
+    """
+    initialize_custom_control()
 
 
 # ==================== 生命周期事件 ====================
@@ -78,7 +103,11 @@ async def lifespan(app: FastAPI):
                 logger.error("❌ EyeLink 连接失败")
                 logger.error("服务将继续运行，但 EyeLink 功能不可用")
         else:
-            logger.info("自动连接已禁用，请手动调用 /eyelink/connect")
+            logger.info("自动连接已禁用")
+    
+    # 调用自定义控制函数
+    logger.info("启动自定义控制...")
+    custom_eyelink_control()
     
     yield
     
@@ -238,6 +267,20 @@ async def send_eyelink_marker(
     try:
         event = payload.get("event", "")
         data = payload.get("data", {})
+        
+        # ============================================================
+        # 自定义特殊事件处理区域
+        # 尝试使用 custom_control.py 中的处理函数
+        # ============================================================
+        
+        if handle_control_message(event, data):
+            # 消息已被自定义处理函数处理，不再发送标准标记
+            logger.debug(f"Event {event} handled by custom control")
+            return
+        
+        # ============================================================
+        # 标准标记发送
+        # ============================================================
         
         # 创建标记
         marker = EyeLinkMarker(

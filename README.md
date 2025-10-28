@@ -27,11 +27,74 @@ python main.py
 ├── models.py            # 数据模型
 ├── utils.py             # 工具函数
 ├── eyelink_manager.py   # 眼动仪管理
+├── custom_control.py    # 🔧 自定义控制逻辑（用户编辑）
 ├── debug_eyelink.py     # EyeLink 调试工具
 ├── check_network.sh     # 网络检查脚本
 ├── requirements.txt     # 依赖包
 └── config_example.env   # 配置示例
 ```
+
+## 自定义控制
+
+### 概述
+
+`custom_control.py` 是专门为用户提供的自定义区域。在这个文件中，你可以编写自己的 EyeLink 控制逻辑，而不用担心影响主程序。
+
+### 使用方法
+
+1. **打开 `custom_control.py` 文件**
+2. **找到你需要的示例代码**
+3. **取消注释并根据需要修改**
+
+### 功能示例
+
+#### 1. 键盘控制
+
+```python
+# 在 custom_control.py 的 keyboard_control_example() 中取消注释
+# 启用后可以通过命令行输入控制 EyeLink
+
+EyeLink > start       # 开始记录
+EyeLink > stop        # 停止记录
+EyeLink > calibrate   # 校准
+EyeLink > status      # 查看状态
+```
+
+#### 2. 响应 MAIC 消息
+
+```python
+# 在 handle_control_message() 函数中添加：
+if event_name == "EYELINK_START_RECORDING":
+    eyelink_manager.start_recording()
+    return True
+```
+
+然后 MAIC 平台发送：
+```json
+{
+  "event": "EYELINK_START_RECORDING",
+  "data": {}
+}
+```
+
+#### 3. 直接调用 PyLink API
+
+```python
+# 获取 tracker 对象
+tracker = get_eyelink_tracker()
+if tracker:
+    # 发送自定义命令
+    tracker.sendCommand("record_status_message 'My Custom Status'")
+    tracker.sendMessage("CUSTOM_MARKER")
+```
+
+### 可用的工具函数
+
+- `get_eyelink_tracker()` - 获取 PyLink tracker 对象
+- `quick_marker(message)` - 快速发送标记
+- `eyelink_manager.start_recording()` - 开始记录
+- `eyelink_manager.stop_recording()` - 停止记录
+- `eyelink_manager.get_status()` - 获取状态
 
 ## 核心功能
 
