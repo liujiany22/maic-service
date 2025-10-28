@@ -440,7 +440,7 @@ def start_experiment_control():
                     logger.info("开始记录并进入实验...")
                     
                     # 开始记录
-                    success = eyelink_manager.start_recording()
+                    success = eyelink_manager.start_recording("test1028.edfs")
                     
                     if success:
                         experiment_running = True

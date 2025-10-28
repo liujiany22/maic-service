@@ -129,12 +129,13 @@ class EyeLinkManager:
                     
                 self.status = EyeLinkStatus.DISCONNECTED
                 self.recording = False
+                self.edf_file = None  # 清空 EDF 文件名
                 logger.info("Disconnected from EyeLink")
                 
         except Exception as e:
             logger.error(f"Error during disconnect: {e}", exc_info=True)
     
-    def start_recording(self, edf_filename: str = "experiment.edf") -> bool:
+    def start_recording(self, edf_filename: str = "test.edf") -> bool:
         """
         开始记录眼动数据
         
@@ -251,15 +252,21 @@ class EyeLinkManager:
             
         try:
             with self._lock:
+                logger.info("正在停止记录...")
                 self.tracker.stopRecording()
+                
+                logger.info("正在关闭 EDF 文件...")
                 self.tracker.closeDataFile()
+                
                 self.recording = False
                 self.status = EyeLinkStatus.CONNECTED
-                logger.info("Stopped recording")
+                
+                logger.info(f"✅ 记录已停止，EDF 文件: {self.edf_file}")
+                # 注意：不清空 self.edf_file，保留用于文件传输
                 return True
                 
         except Exception as e:
-            logger.error(f"Error stopping recording: {e}", exc_info=True)
+            logger.error(f"❌ 停止记录失败: {e}", exc_info=True)
             return False
     
     def send_marker(self, marker: EyeLinkMarker) -> bool:
