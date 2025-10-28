@@ -150,100 +150,56 @@ class EyeLinkManager:
             - 文件保存在眼动仪主机上，需要手动传输到本地
             - recording 参数 (1,1,1,1) 含义请参考 PyLink 文档
         """
-        logger.info("=" * 60)
-        logger.info("开始记录眼动数据")
-        logger.info("=" * 60)
+        logger.info(f"开始记录: {edf_filename}")
         
-        # 检查连接状态
         if not self.tracker:
-            logger.error("❌ Tracker 对象不存在")
-            logger.error("请先调用 connect() 方法")
+            logger.error("未连接")
             return False
             
         if self.status != EyeLinkStatus.CONNECTED:
-            logger.error(f"❌ 当前状态不正确: {self.status.value}")
-            logger.error("需要状态为 CONNECTED 才能开始记录")
+            logger.error(f"状态错误: {self.status.value}")
             return False
-        
-        logger.info(f"✓ 连接状态正常")
-        logger.info(f"EDF 文件名: {edf_filename}")
-        
-        # 验证文件名
-        if len(edf_filename) > 12:  # 8.3 格式
-            logger.warning(f"⚠️  文件名可能过长: {edf_filename}")
-            logger.warning("EyeLink 要求 8.3 格式 (8个字符 + .edf)")
             
         try:
             with self._lock:
-                # 打开 EDF 文件
-                logger.info("打开 EDF 文件...")
-                try:
-                    self.tracker.openDataFile(edf_filename)
-                    logger.info(f"✓ EDF 文件打开成功: {edf_filename}")
-                    self.edf_file = edf_filename
-                except Exception as e:
-                    logger.error(f"❌ 打开 EDF 文件失败: {e}")
-                    raise
+                # 打开文件
+                self.tracker.openDataFile(edf_filename)
+                self.edf_file = edf_filename
                 
                 # 配置记录参数
-                logger.info("配置记录参数...")
-                
                 commands = [
-                    ("file_event_filter", "LEFT,RIGHT,FIXATION,SACCADE,BLINK,MESSAGE,BUTTON,INPUT"),
-                    ("file_sample_data", "LEFT,RIGHT,GAZE,HREF,RAW,AREA,HTARGET,GAZERES,BUTTON,STATUS,INPUT"),
-                    ("link_event_filter", "LEFT,RIGHT,FIXATION,SACCADE,BLINK,BUTTON,FIXUPDATE,INPUT"),
-                    ("link_sample_data", "LEFT,RIGHT,GAZE,GAZERES,AREA,HTARGET,STATUS,INPUT")
+                    "file_event_filter = LEFT,RIGHT,FIXATION,SACCADE,BLINK,MESSAGE,BUTTON,INPUT",
+                    "file_sample_data = LEFT,RIGHT,GAZE,HREF,RAW,AREA,HTARGET,GAZERES,BUTTON,STATUS,INPUT",
+                    "link_event_filter = LEFT,RIGHT,FIXATION,SACCADE,BLINK,BUTTON,FIXUPDATE,INPUT",
+                    "link_sample_data = LEFT,RIGHT,GAZE,GAZERES,AREA,HTARGET,STATUS,INPUT"
                 ]
                 
-                for cmd_name, cmd_value in commands:
-                    try:
-                        cmd = f"{cmd_name} = {cmd_value}"
-                        logger.debug(f"  发送: {cmd}")
-                        self.tracker.sendCommand(cmd)
-                        logger.debug(f"  ✓ {cmd_name} 设置成功")
-                    except Exception as e:
-                        logger.error(f"  ❌ {cmd_name} 设置失败: {e}")
-                        raise
-                
-                logger.info("✓ 所有记录参数配置完成")
+                for cmd in commands:
+                    self.tracker.sendCommand(cmd)
                 
                 # 开始记录
-                logger.info("启动记录...")
-                logger.debug("  调用 startRecording(1, 1, 1, 1)")
-                logger.debug("  参数含义: (record_file, record_link_events, record_link_samples, record_buttons)")
-                
-                try:
-                    error = self.tracker.startRecording(1, 1, 1, 1)
-                    if error:
-                        logger.error(f"❌ startRecording 返回错误代码: {error}")
-                        logger.error("错误代码含义:")
-                        logger.error("  0: 成功")
-                        logger.error("  其他: 参考 PyLink 文档")
-                        return False
-                    logger.info("✓ startRecording 调用成功")
-                except Exception as e:
-                    logger.error(f"❌ startRecording 调用失败: {e}")
-                    raise
+                error = self.tracker.startRecording(1, 1, 1, 1)
+                if error:
+                    logger.error(f"startRecording 错误: {error}")
+                    return False
                 
                 self.recording = True
                 self.status = EyeLinkStatus.RECORDING
-                
-                logger.info("=" * 60)
-                logger.info(f"✅ 记录已开始: {edf_filename}")
-                logger.info("=" * 60)
+                logger.info(f"✓ 记录已开始: {edf_filename}")
                 return True
                 
         except Exception as e:
-            logger.error("=" * 60)
-            logger.error(f"❌ 记录启动失败: {e}")
-            logger.error("=" * 60)
-            logger.exception("详细错误:")
+            logger.error(f"记录启动失败: {e}")
             return False
     
-    def stop_recording(self) -> bool:
+    def stop_recording(self, save_local: bool = False, local_dir: str = None) -> bool:
         """
-        停止记录眼动数据
+        停止记录并可选保存文件到本地
         
+        Args:
+            save_local: 是否保存文件到本地
+            local_dir: 本地保存目录
+            
         Returns:
             成功返回 True
         """
@@ -252,21 +208,36 @@ class EyeLinkManager:
             
         try:
             with self._lock:
-                logger.info("正在停止记录...")
+                logger.info(f"停止记录: {self.edf_file}")
                 self.tracker.stopRecording()
                 
-                logger.info("正在关闭 EDF 文件...")
-                self.tracker.closeDataFile()
+                # 如果需要保存到本地，先接收文件
+                if save_local and local_dir and self.edf_file:
+                    from pathlib import Path
+                    from datetime import datetime
+                    
+                    save_path = Path(local_dir)
+                    save_path.mkdir(parents=True, exist_ok=True)
+                    
+                    # 生成本地文件名
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    local_file = save_path / f"{timestamp}_{self.edf_file}"
+                    
+                    logger.info(f"接收 EDF 文件: {local_file}")
+                    try:
+                        self.tracker.receiveDataFile(self.edf_file, str(local_file))
+                        logger.info(f"✓ 文件已保存: {local_file}")
+                    except Exception as e:
+                        logger.warning(f"文件传输失败 (可能需要手动传输): {e}")
                 
+                self.tracker.closeDataFile()
                 self.recording = False
                 self.status = EyeLinkStatus.CONNECTED
-                
-                logger.info(f"✅ 记录已停止，EDF 文件: {self.edf_file}")
-                # 注意：不清空 self.edf_file，保留用于文件传输
+                logger.info("✓ 记录已停止")
                 return True
                 
         except Exception as e:
-            logger.error(f"❌ 停止记录失败: {e}", exc_info=True)
+            logger.error(f"停止记录失败: {e}")
             return False
     
     def send_marker(self, marker: EyeLinkMarker) -> bool:
@@ -331,37 +302,114 @@ class EyeLinkManager:
                 elif marker.marker_type == MarkerType.CUSTOM:
                     message_to_send = marker.message
                 
-                # 发送主消息
+                # 发送消息
                 if message_to_send:
-                    logger.debug(f"  → sendMessage: {message_to_send}")
-                    try:
-                        self.tracker.sendMessage(message_to_send)
-                        logger.debug(f"  ✓ 主消息发送成功")
-                    except Exception as e:
-                        logger.error(f"  ❌ 主消息发送失败: {e}")
-                        raise
+                    self.tracker.sendMessage(message_to_send)
                 
-                # 记录额外的试验变量
+                # 发送附加变量
                 if marker.additional_data:
-                    logger.debug(f"  发送附加变量 ({len(marker.additional_data)} 个):")
                     for key, value in marker.additional_data.items():
-                        var_msg = f"!V TRIAL_VAR {key} {value}"
-                        logger.debug(f"    → {var_msg}")
-                        try:
-                            self.tracker.sendMessage(var_msg)
-                            logger.debug(f"    ✓ 变量 {key} 发送成功")
-                        except Exception as e:
-                            logger.warning(f"    ⚠️  变量 {key} 发送失败: {e}")
+                        self.tracker.sendMessage(f"!V TRIAL_VAR {key} {value}")
                 
-                logger.debug(f"✅ 标记发送完成: {marker.marker_type.value}")
-                logger.debug("-" * 40)
+                logger.debug(f"Marker: {message_to_send}")
                 return True
                 
         except Exception as e:
-            logger.error("-" * 40)
-            logger.error(f"❌ 发送标记失败: {e}")
-            logger.error("-" * 40)
-            logger.exception("详细错误:")
+            logger.error(f"发送标记失败: {e}")
+            return False
+    
+    def do_calibration(self, width: int = 1920, height: int = 1080) -> bool:
+        """
+        执行校准
+        
+        Args:
+            width: 屏幕宽度
+            height: 屏幕高度
+            
+        Returns:
+            成功返回 True
+        """
+        if not self.tracker:
+            logger.error("未连接到 EyeLink")
+            return False
+        
+        try:
+            from eyelink_graphics import do_tracker_setup
+            logger.info("开始校准...")
+            success = do_tracker_setup(self.tracker, width, height)
+            if success:
+                logger.info("✓ 校准完成")
+            return success
+        except Exception as e:
+            logger.error(f"校准失败: {e}")
+            return False
+    
+    def do_validation(self, width: int = 1920, height: int = 1080) -> bool:
+        """
+        执行验证（与校准使用相同界面，在界面中选择 validate）
+        
+        Args:
+            width: 屏幕宽度
+            height: 屏幕高度
+            
+        Returns:
+            成功返回 True
+        """
+        return self.do_calibration(width, height)
+    
+    def do_drift_correct(self, x: int = None, y: int = None, width: int = 1920, height: int = 1080) -> bool:
+        """
+        执行漂移校正
+        
+        Args:
+            x: 校正点 x 坐标（默认屏幕中心）
+            y: 校正点 y 坐标（默认屏幕中心）
+            width: 屏幕宽度
+            height: 屏幕高度
+            
+        Returns:
+            成功返回 True
+        """
+        if not self.tracker:
+            logger.error("未连接到 EyeLink")
+            return False
+        
+        try:
+            from eyelink_graphics import do_drift_correct
+            
+            # 默认屏幕中心
+            if x is None:
+                x = width // 2
+            if y is None:
+                y = height // 2
+            
+            logger.info(f"漂移校正: ({x}, {y})")
+            success = do_drift_correct(self.tracker, x, y)
+            if success:
+                logger.info("✓ 漂移校正完成")
+            return success
+        except Exception as e:
+            logger.error(f"漂移校正失败: {e}")
+            return False
+    
+    def send_message(self, message: str) -> bool:
+        """
+        发送简单消息到 EyeLink
+        
+        Args:
+            message: 消息内容
+            
+        Returns:
+            成功返回 True
+        """
+        if not self.tracker:
+            return False
+        
+        try:
+            self.tracker.sendMessage(message)
+            return True
+        except Exception as e:
+            logger.error(f"发送消息失败: {e}")
             return False
     
     def get_status(self) -> EyeLinkStatusResponse:

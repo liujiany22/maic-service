@@ -247,52 +247,31 @@ async def send_eyelink_marker(
     request_id: str,
     timestamp: datetime
 ) -> None:
-    """
-    根据接收到的数据自动发送眼动仪标记
-    """
+    """发送标记到 EyeLink"""
     if not eyelink_manager.get_status().connected:
-        logger.warning("EyeLink not connected, skipping marker")
         return
     
     try:
         event = payload.get("event", "")
         data = payload.get("data", {})
         
-        # ============================================================
-        # 自定义特殊事件处理区域
-        # 尝试使用 custom_control.py 中的处理函数
-        # ============================================================
-        
+        # 检查自定义处理
         if handle_control_message(event, data):
-            # 消息已被自定义处理函数处理，不再发送标准标记
-            logger.debug(f"Event {event} handled by custom control")
             return
         
-        # ============================================================
-        # 标准标记发送
-        # ============================================================
-        
-        # 创建标记
+        # 发送标准标记
         marker = EyeLinkMarker(
             marker_type=MarkerType.MESSAGE,
             message=f"EVENT {event}",
             timestamp=timestamp,
             trial_id=data.get("trial_id"),
-            additional_data={
-                "request_id": request_id,
-                "event": event
-            }
+            additional_data={"request_id": request_id, "event": event}
         )
         
-        # 发送标记
-        success = eyelink_manager.send_marker(marker)
-        if success:
-            logger.debug(f"Sent EyeLink marker for event: {event}")
-        else:
-            logger.warning(f"Failed to send EyeLink marker: {event}")
+        eyelink_manager.send_marker(marker)
             
     except Exception as e:
-        logger.error(f"Error sending EyeLink marker: {e}")
+        logger.error(f"Marker error: {e}")
 
 
 # ==================== 程序入口 ====================
