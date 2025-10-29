@@ -147,8 +147,9 @@ python debug_eyelink.py --host 100.1.1.1
 - EDF 文件名默认为 `test.edf`（可在 `.env` 修改）
 - dummy 模式用于无硬件测试
 - 文件传输可能需要手动操作（取决于网络配置）
-- 录屏功能需要安装: `pip install opencv-python mss pyedfread numpy pillow`
+- 录屏功能需要安装: `pip install opencv-python mss pyedfread numpy pillow pandas`
 - Overlay 处理可能需要较长时间（取决于视频长度）
+- `pyedfread` 需要 SR Research EyeLink 开发工具包（Windows 平台）
 
 ## API 文档
 

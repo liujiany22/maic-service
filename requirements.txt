@@ -16,6 +16,7 @@ opencv-python>=4.8.0  # 视频处理
 mss>=9.0.0  # 屏幕截图
 numpy>=1.24.0  # 数组处理
 pillow>=10.0.0  # 图像处理
+pandas>=2.0.0  # 数据处理 (pyedfread 依赖)
 
 git+https://github.com/s-ccs/pyedfread
 
