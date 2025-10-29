@@ -12,6 +12,7 @@ EyeLink 眼动仪管理模块
 
 import logging
 import threading
+import time
 from typing import Optional
 
 from models import (
@@ -135,12 +136,13 @@ class EyeLinkManager:
         except Exception as e:
             logger.error(f"Error during disconnect: {e}", exc_info=True)
     
-    def start_recording(self, edf_filename: str = "test.edf") -> bool:
+    def start_recording(self, edf_filename: str = "test.edf", enable_screen_recording: bool = True) -> bool:
         """
-        开始记录眼动数据
+        开始记录眼动数据和屏幕录制
         
         Args:
             edf_filename: EDF 数据文件名（最多 8 个字符，不含扩展名）
+            enable_screen_recording: 是否同时启动屏幕录制
             
         Returns:
             成功返回 True，否则返回 False
@@ -150,7 +152,7 @@ class EyeLinkManager:
             - 文件保存在眼动仪主机上，需要手动传输到本地
             - recording 参数 (1,1,1,1) 含义请参考 PyLink 文档
         """
-        logger.info(f"开始记录: {edf_filename}")
+        logger.info(f"开始记录: {edf_filename} (录屏:{enable_screen_recording})")
         
         if not self.tracker:
             logger.error("未连接")
@@ -185,7 +187,18 @@ class EyeLinkManager:
                 
                 self.recording = True
                 self.status = EyeLinkStatus.RECORDING
-                logger.info(f"✓ 记录已开始: {edf_filename}")
+                logger.info(f"✓ EyeLink 记录已开始: {edf_filename}")
+                
+                # 启动屏幕录制
+                if enable_screen_recording:
+                    try:
+                        from screen_recorder import screen_recorder
+                        # 使用相同的文件名（不含扩展名）
+                        base_name = edf_filename.replace('.edf', '')
+                        screen_recorder.start_recording(base_name)
+                    except Exception as e:
+                        logger.warning(f"屏幕录制启动失败: {e}")
+                
                 return True
                 
         except Exception as e:
@@ -231,7 +244,48 @@ class EyeLinkManager:
                 self.tracker.closeDataFile()
                 self.recording = False
                 self.status = EyeLinkStatus.CONNECTED
-                logger.info("✓ 记录已停止")
+                logger.info("✓ EyeLink 记录已停止")
+                
+                # 停止屏幕录制并处理 overlay
+                try:
+                    from screen_recorder import screen_recorder, overlay_gaze_on_video
+                    
+                    # 停止录屏
+                    video_path = screen_recorder.stop_recording()
+                    
+                    if video_path and save_local and local_dir:
+                        logger.info("处理录屏和 overlay...")
+                        
+                        # EDF 文件路径
+                        from pathlib import Path
+                        from datetime import datetime
+                        save_path = Path(local_dir)
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        edf_local = save_path / f"{timestamp}_{self.edf_file}"
+                        
+                        # 等待 EDF 文件传输完成
+                        time.sleep(1)
+                        
+                        if edf_local.exists():
+                            # 生成 overlay 视频
+                            overlay_output = str(Path(video_path).with_name(
+                                Path(video_path).stem + "_gaze.mp4"
+                            ))
+                            
+                            overlay_gaze_on_video(
+                                video_path=video_path,
+                                edf_path=str(edf_local),
+                                output_path=overlay_output
+                            )
+                            
+                            logger.info(f"✓ 原始录屏: {video_path}")
+                            logger.info(f"✓ Overlay录屏: {overlay_output}")
+                        else:
+                            logger.warning(f"EDF 文件未找到: {edf_local}")
+                
+                except Exception as e:
+                    logger.error(f"录屏处理失败: {e}")
+                
                 return True
                 
         except Exception as e:

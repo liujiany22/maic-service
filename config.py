@@ -31,6 +31,7 @@ load_env_file()
 BASE_DIR = Path(__file__).resolve().parent
 LOG_DIR = BASE_DIR / "logdata"
 SERVICE_LOG_DIR = BASE_DIR / "log"
+RECORDING_DIR = LOG_DIR / "recordings"  # 录屏文件目录
 
 APP_NAME = "MAIC JSON Service"
 APP_VERSION = "1.0.0"
@@ -57,6 +58,7 @@ def init_directories():
     """确保必要的目录存在"""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     SERVICE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    RECORDING_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def print_config():

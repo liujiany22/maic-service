@@ -122,7 +122,10 @@ EYELINK_AUTO_CONNECT=true
 
 - MAIC 消息: `logdata/YYYYMMDD-HHMMSS_<request_id>.txt`
 - EDF 文件: `logdata/eyelink_data/YYYYMMDD_HHMMSS_test.edf`
-- 使用 `end` 命令自动传输并保存
+- 录屏文件:
+  - 原始: `logdata/recordings/test.mp4`
+  - Overlay: `logdata/recordings/test_gaze.mp4` (带眼动轨迹)
+- 使用 `end` 命令自动传输、保存和处理
 
 ## 调试
 
@@ -144,6 +147,8 @@ python debug_eyelink.py --host 100.1.1.1
 - EDF 文件名默认为 `test.edf`（可在 `.env` 修改）
 - dummy 模式用于无硬件测试
 - 文件传输可能需要手动操作（取决于网络配置）
+- 录屏功能需要安装: `pip install opencv-python mss pyedfread numpy pillow`
+- Overlay 处理可能需要较长时间（取决于视频长度）
 
 ## API 文档
 
