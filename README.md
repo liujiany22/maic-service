@@ -141,6 +141,28 @@ python check_network.py [IP地址]
 python debug_eyelink.py --host 100.1.1.1
 ```
 
+### 测试 Overlay 功能
+
+单独测试眼动轨迹叠加功能：
+
+```bash
+# 基本用法
+python test_overlay.py --video test.mp4 --edf example.edf
+
+# 指定输出文件
+python test_overlay.py --video test.mp4 --edf example.edf --output result.mp4
+
+# 自定义注视点样式（红色，半径30）
+python test_overlay.py --video test.mp4 --edf example.edf --color 0,0,255 --radius 30
+```
+
+**参数说明**：
+- `--video` / `-v`: 输入视频文件路径（必需）
+- `--edf` / `-e`: EDF 眼动数据文件路径（必需）
+- `--output` / `-o`: 输出文件路径（可选）
+- `--color`: 注视点颜色 BGR 格式（可选，默认绿色 `0,255,0`）
+- `--radius`: 注视点半径像素（可选，默认 20）
+
 ## 注意事项
 
 - 校准/验证需要 pygame 和显示器
