@@ -46,6 +46,7 @@ class EyeLinkManager:
         self.status: EyeLinkStatus = EyeLinkStatus.DISCONNECTED
         self.recording: bool = False
         self.edf_file: Optional[str] = None
+        self.session_timestamp: Optional[str] = None  # 会话时间戳
         self.error_message: Optional[str] = None
         self._lock = threading.Lock()
         
@@ -136,37 +137,46 @@ class EyeLinkManager:
         except Exception as e:
             logger.error(f"Error during disconnect: {e}", exc_info=True)
     
-    def start_recording(self, edf_filename: str = "test.edf", enable_screen_recording: bool = True) -> bool:
+    def start_recording(self, enable_screen_recording: bool = True) -> tuple:
         """
         开始记录眼动数据和屏幕录制
         
         Args:
-            edf_filename: EDF 数据文件名（最多 8 个字符，不含扩展名）
             enable_screen_recording: 是否同时启动屏幕录制
             
         Returns:
-            成功返回 True，否则返回 False
+            (成功标志, 会话时间戳) - 时间戳用于文件命名
             
         注意：
-            - EDF 文件名必须符合 DOS 8.3 格式（最多 8 个字符 + .edf）
-            - 文件保存在眼动仪主机上，需要手动传输到本地
-            - recording 参数 (1,1,1,1) 含义请参考 PyLink 文档
+            - EDF 文件名自动生成时间戳格式（DOS 8.3兼容）
+            - 时间戳格式：YYYYMMDD_HHMMSS
+            - 录屏和EDF使用相同的时间戳
         """
-        logger.info(f"开始记录: {edf_filename} (录屏:{enable_screen_recording})")
+        from datetime import datetime
+        
+        # 生成统一的会话时间戳
+        session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # EyeLink EDF文件名限制：最多8个字符（DOS 8.3格式）
+        # 使用简短的时间戳：MMDDHHSS（月日时分秒）
+        edf_short_name = datetime.now().strftime("%m%d%H%M") + ".edf"
+        
+        logger.info(f"开始记录: {edf_short_name} (会话:{session_timestamp}, 录屏:{enable_screen_recording})")
         
         if not self.tracker:
             logger.error("未连接")
-            return False
+            return (False, None)
             
         if self.status != EyeLinkStatus.CONNECTED:
             logger.error(f"状态错误: {self.status.value}")
-            return False
+            return (False, None)
             
         try:
             with self._lock:
                 # 打开文件
-                self.tracker.openDataFile(edf_filename)
-                self.edf_file = edf_filename
+                self.tracker.openDataFile(edf_short_name)
+                self.edf_file = edf_short_name
+                self.session_timestamp = session_timestamp  # 保存会话时间戳
                 
                 # 配置记录参数
                 commands = [
@@ -183,27 +193,26 @@ class EyeLinkManager:
                 error = self.tracker.startRecording(1, 1, 1, 1)
                 if error:
                     logger.error(f"startRecording 错误: {error}")
-                    return False
+                    return (False, None)
                 
                 self.recording = True
                 self.status = EyeLinkStatus.RECORDING
-                logger.info(f"✓ EyeLink 记录已开始: {edf_filename}")
+                logger.info(f"✓ EyeLink 记录已开始")
                 
                 # 启动屏幕录制
                 if enable_screen_recording:
                     try:
                         from screen_recorder import screen_recorder
-                        # 使用相同的文件名（不含扩展名）
-                        base_name = edf_filename.replace('.edf', '')
-                        screen_recorder.start_recording(base_name)
+                        # 使用会话时间戳作为录屏文件名
+                        screen_recorder.start_recording(session_timestamp)
                     except Exception as e:
                         logger.warning(f"屏幕录制启动失败: {e}")
                 
-                return True
+                return (True, session_timestamp)
                 
         except Exception as e:
             logger.error(f"记录启动失败: {e}")
-            return False
+            return (False, None)
     
     def stop_recording(self, save_local: bool = False, local_dir: str = None) -> bool:
         """
@@ -226,22 +235,21 @@ class EyeLinkManager:
                 
                 # 保存到本地
                 saved_edf_path = None
-                if save_local and local_dir and self.edf_file:
+                if save_local and local_dir and self.edf_file and self.session_timestamp:
                     from pathlib import Path
-                    from datetime import datetime
                     
                     save_path = Path(local_dir)
                     save_path.mkdir(parents=True, exist_ok=True)
                     
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    local_file = save_path / f"{timestamp}_{self.edf_file}"
+                    # 使用会话时间戳作为最终文件名
+                    local_file = save_path / f"{self.session_timestamp}.edf"
                     
                     try:
                         self.tracker.receiveDataFile(self.edf_file, str(local_file))
-                        logger.info(f"✓ 已保存: {local_file}")
+                        logger.info(f"✓ EDF已保存: {local_file}")
                         saved_edf_path = local_file  # 保存实际路径
                     except Exception as e:
-                        logger.error(f"传输失败: {e}")
+                        logger.error(f"EDF传输失败: {e}")
                 
                 self.tracker.closeDataFile()
                 self.recording = False
@@ -257,16 +265,14 @@ class EyeLinkManager:
                     
                     # 如果有录屏且有 EDF 文件，进行 overlay 处理
                     if video_path and saved_edf_path:
-                        logger.info("处理录屏和 overlay...")
+                        logger.info("处理 Overlay...")
                         
                         from pathlib import Path
                         
                         # 使用实际保存的 EDF 文件路径
                         if saved_edf_path.exists():
-                            # 生成 overlay 视频
-                            overlay_output = str(Path(video_path).with_name(
-                                Path(video_path).stem + "_gaze.mp4"
-                            ))
+                            # Overlay视频：使用时间戳_gaze.mp4
+                            overlay_output = str(Path(video_path).parent / f"{self.session_timestamp}_gaze.mp4")
                             
                             overlay_gaze_on_video(
                                 video_path=video_path,
@@ -274,12 +280,12 @@ class EyeLinkManager:
                                 output_path=overlay_output
                             )
                             
-                            logger.info(f"✓ 原始录屏: {video_path}")
-                            logger.info(f"✓ Overlay录屏: {overlay_output}")
+                            logger.info(f"✓ 原始录屏: {Path(video_path).name}")
+                            logger.info(f"✓ Overlay录屏: {Path(overlay_output).name}")
                         else:
                             logger.warning(f"EDF 文件未找到: {saved_edf_path}")
                     elif video_path:
-                        logger.info(f"✓ 录屏已保存: {video_path} (未进行 overlay)")
+                        logger.info(f"✓ 录屏已保存 (无 Overlay)")
                 
                 except Exception as e:
                     logger.error(f"录屏处理失败: {e}")

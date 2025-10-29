@@ -114,59 +114,29 @@ EYELINK_HOST_IP=100.1.1.1
 EYELINK_DUMMY_MODE=false
 EYELINK_SCREEN_WIDTH=1920
 EYELINK_SCREEN_HEIGHT=1080
-EYELINK_EDF_FILENAME=test.edf
 EYELINK_AUTO_CONNECT=true
+
+# 注：文件名使用自动时间戳 (YYYYMMDD_HHMMSS)
 ```
 
 ## 文件保存
 
-- MAIC 消息: `logdata/YYYYMMDD-HHMMSS_<request_id>.txt`
-- EDF 文件: `logdata/eyelink_data/YYYYMMDD_HHMMSS_test.edf`
-- 录屏文件:
-  - 原始: `logdata/recordings/test.mp4`
-  - Overlay: `logdata/recordings/test_gaze.mp4` (带眼动轨迹)
-- 使用 `end` 命令自动传输、保存和处理
+所有文件使用统一的时间戳命名（`YYYYMMDD_HHMMSS`）：
 
-## 调试
+- **MAIC 消息**: `logdata/YYYYMMDD-HHMMSS_<request_id>.txt`
+- **EDF 文件**: `logdata/eyelink_data/YYYYMMDD_HHMMSS.edf`
+- **录屏文件**:
+  - 原始: `logdata/recordings/YYYYMMDD_HHMMSS.mp4`
+  - Overlay: `logdata/recordings/YYYYMMDD_HHMMSS_gaze.mp4` (带眼动轨迹)
 
-### 网络检查
+时间戳在开始记录时自动生成，确保同一会话的所有文件使用相同的时间戳。
 
-```bash
-python check_network.py [IP地址]
-```
-
-### EyeLink 测试
-
-```bash
-python debug_eyelink.py --host 100.1.1.1
-```
-
-### 测试 Overlay 功能
-
-单独测试眼动轨迹叠加功能：
-
-```bash
-# 基本用法
-python test_overlay.py --video test.mp4 --edf example.edf
-
-# 指定输出文件
-python test_overlay.py --video test.mp4 --edf example.edf --output result.mp4
-
-# 自定义注视点样式（红色，半径30）
-python test_overlay.py --video test.mp4 --edf example.edf --color 0,0,255 --radius 30
-```
-
-**参数说明**：
-- `--video` / `-v`: 输入视频文件路径（必需）
-- `--edf` / `-e`: EDF 眼动数据文件路径（必需）
-- `--output` / `-o`: 输出文件路径（可选）
-- `--color`: 注视点颜色 BGR 格式（可选，默认绿色 `0,255,0`）
-- `--radius`: 注视点半径像素（可选，默认 20）
+使用 `end` 命令自动传输、保存和处理所有文件。
 
 ## 注意事项
 
 - 校准/验证需要 pygame 和显示器
-- EDF 文件名默认为 `test.edf`（可在 `.env` 修改）
+- 文件名自动使用时间戳，无需手动配置
 - dummy 模式用于无硬件测试
 - 文件传输可能需要手动操作（取决于网络配置）
 - 录屏功能需要安装: `pip install opencv-python mss pyedfread numpy pillow pandas`

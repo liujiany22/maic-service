@@ -48,7 +48,6 @@ EYELINK_HOST_IP = os.getenv("EYELINK_HOST_IP", "100.1.1.1")  # 眼动仪主机 I
 EYELINK_DUMMY_MODE = os.getenv("EYELINK_DUMMY_MODE", "false").lower() == "true"
 EYELINK_SCREEN_WIDTH = int(os.getenv("EYELINK_SCREEN_WIDTH", "1920"))
 EYELINK_SCREEN_HEIGHT = int(os.getenv("EYELINK_SCREEN_HEIGHT", "1080"))
-EYELINK_EDF_FILENAME = os.getenv("EYELINK_EDF_FILENAME", "test.edf")
 
 # 启动时自动连接 EyeLink
 EYELINK_AUTO_CONNECT = os.getenv("EYELINK_AUTO_CONNECT", "true").lower() == "true"

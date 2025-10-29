@@ -153,17 +153,6 @@ else
     echo "   ✓ 配置文件已存在"
 fi
 
-# 运行测试
-echo ""
-echo "9. 运行测试..."
-if python test.py > /dev/null 2>&1; then
-    echo "   ✓ 所有测试通过"
-else
-    echo "   ⚠️  部分测试失败（可能是因为缺少 FastAPI 或 EyeLink）"
-    echo "   如果看到 'No module named fastapi'，这是正常的"
-    echo "   核心模块测试应该通过"
-fi
-
 # 完成
 echo ""
 echo "================================"

@@ -154,7 +154,7 @@ def overlay_gaze_on_video(
     edf_path: str,
     output_path: str = None,
     gaze_color: tuple = (0, 255, 0),
-    gaze_radius: int = 20
+    gaze_radius: int = 10
 ) -> bool:
     """
     将眼动数据叠加到录屏视频上
@@ -275,10 +275,10 @@ def overlay_gaze_on_video(
                 
                 # 确保坐标在范围内
                 if 0 <= x < width and 0 <= y < height:
-                    # 绘制圆圈
-                    cv2.circle(frame, (x, y), gaze_radius, gaze_color, 2)
+                    # 绘制圆圈（外圈）
+                    cv2.circle(frame, (x, y), gaze_radius, gaze_color, 1)
                     # 绘制中心点
-                    cv2.circle(frame, (x, y), 3, gaze_color, -1)
+                    cv2.circle(frame, (x, y), 2, gaze_color, -1)
             
             # 写入帧
             out.write(frame)
