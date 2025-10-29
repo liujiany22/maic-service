@@ -190,7 +190,7 @@ async def process_data(payload: Dict[str, Any], request_id: str) -> None:
         # 准备写入的数据
         log_data = {
             "request_id": request_id,
-            "received_at": now.isoformat(),
+            "received_at": now.isoformat().replace("+00:00", "Z"),  # RFC 3339 格式
             "event_brief": event_brief,
             "payload": payload
         }
