@@ -141,22 +141,22 @@ async def ingest_data(request: Request, background_tasks: BackgroundTasks):
                     "detail": json.loads(ve.json())
                 }
             )
-        
+
         # 生成 request_id
         request_id = parsed.request_id or uuid.uuid4().hex
         payload_dict = raw_data.copy()
         payload_dict["request_id"] = request_id
-        
+
         # 后台处理
         background_tasks.add_task(process_data, payload_dict, request_id)
-        
+
         # 返回确认
         return AckResponse(
             ok=True,
             request_id=request_id,
             received_keys={k: True for k in raw_data.keys()}
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -246,7 +246,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
+                host="0.0.0.0",
         port=config.PORT,
         log_level=config.LOG_LEVEL.lower(),
         reload=False

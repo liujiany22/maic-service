@@ -52,6 +52,9 @@ EYELINK_SCREEN_HEIGHT = int(os.getenv("EYELINK_SCREEN_HEIGHT", "1080"))
 # 启动时自动连接 EyeLink
 EYELINK_AUTO_CONNECT = os.getenv("EYELINK_AUTO_CONNECT", "true").lower() == "true"
 
+# Overlay 使用的眼睛（"left" 或 "right"，默认 "right"）
+EYELINK_OVERLAY_EYE = os.getenv("EYELINK_OVERLAY_EYE", "right").lower()
+
 # ==================== 初始化目录 ====================
 def init_directories():
     """确保必要的目录存在"""

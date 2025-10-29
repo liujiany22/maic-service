@@ -116,6 +116,9 @@ EYELINK_SCREEN_WIDTH=1920
 EYELINK_SCREEN_HEIGHT=1080
 EYELINK_AUTO_CONNECT=true
 
+# Overlay 使用的眼睛（left 或 right，默认 right）
+EYELINK_OVERLAY_EYE=right
+
 # 注：文件名使用自动时间戳 (YYYYMMDD_HHMMSS)
 ```
 
@@ -125,11 +128,20 @@ EYELINK_AUTO_CONNECT=true
 
 - **MAIC 消息**: `logdata/YYYYMMDD-HHMMSS_<request_id>.txt`
 - **EDF 文件**: `logdata/eyelink_data/YYYYMMDD_HHMMSS.edf`
+- **EDF 解析数据** (CSV 格式，便于查看):
+  - Samples: `logdata/eyelink_data/YYYYMMDD_HHMMSS_samples.csv`
+  - Events: `logdata/eyelink_data/YYYYMMDD_HHMMSS_events.csv`
+  - Messages: `logdata/eyelink_data/YYYYMMDD_HHMMSS_messages.csv`
 - **录屏文件**:
   - 原始: `logdata/recordings/YYYYMMDD_HHMMSS.mp4`
   - Overlay: `logdata/recordings/YYYYMMDD_HHMMSS_gaze.mp4` (带眼动轨迹)
 
 时间戳在开始记录时自动生成，确保同一会话的所有文件使用相同的时间戳。
+
+**CSV 文件说明**：
+- `_samples.csv`: 眼动采样数据（注视点坐标、瞳孔大小等，约1000Hz）
+- `_events.csv`: 眼动事件（注视、眨眼、扫视等）
+- `_messages.csv`: 实验标记消息（trial_start、trial_end 等）
 
 使用 `end` 命令自动传输、保存和处理所有文件。
 
@@ -142,6 +154,7 @@ EYELINK_AUTO_CONNECT=true
 - 录屏功能需要安装: `pip install opencv-python mss pyedfread numpy pillow pandas`
 - Overlay 处理可能需要较长时间（取决于视频长度）
 - `pyedfread` 需要 SR Research EyeLink 开发工具包（Windows 平台）
+- **Overlay 默认使用右眼数据**，可通过 `EYELINK_OVERLAY_EYE` 配置为 `left` 或 `right`
 
 ## API 文档
 

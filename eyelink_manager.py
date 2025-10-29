@@ -274,10 +274,14 @@ class EyeLinkManager:
                             # Overlay视频：使用时间戳_gaze.mp4
                             overlay_output = str(Path(video_path).parent / f"{self.session_timestamp}_gaze.mp4")
                             
+                            # 导入配置
+                            import config
+                            
                             overlay_gaze_on_video(
                                 video_path=video_path,
                                 edf_path=str(saved_edf_path),
-                                output_path=overlay_output
+                                output_path=overlay_output,
+                                eye=config.EYELINK_OVERLAY_EYE
                             )
                             
                             logger.info(f"✓ 原始录屏: {Path(video_path).name}")

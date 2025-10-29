@@ -154,7 +154,8 @@ def overlay_gaze_on_video(
     edf_path: str,
     output_path: str = None,
     gaze_color: tuple = (0, 255, 0),
-    gaze_radius: int = 10
+    gaze_radius: int = 10,
+    eye: str = "right"
 ) -> bool:
     """
     将眼动数据叠加到录屏视频上
@@ -165,6 +166,7 @@ def overlay_gaze_on_video(
         output_path: 输出文件路径
         gaze_color: 注视点颜色 (B, G, R)
         gaze_radius: 注视点半径
+        eye: 使用哪只眼睛的数据 ("left" 或 "right"，默认 "right")
         
     Returns:
         成功返回 True
@@ -181,6 +183,32 @@ def overlay_gaze_on_video(
         if samples is None or samples.empty:
             logger.error("EDF 数据中未找到有效 samples")
             return False
+        
+        # 保存解析后的 EDF 数据为 CSV（便于查看）
+        try:
+            edf_base = Path(edf_path).stem  # 获取文件名（不含扩展名）
+            edf_dir = Path(edf_path).parent
+            
+            # 保存 samples
+            if samples is not None and not samples.empty:
+                samples_csv = edf_dir / f"{edf_base}_samples.csv"
+                samples.to_csv(samples_csv, index=False)
+                logger.info(f"✓ Samples 已保存: {samples_csv.name}")
+            
+            # 保存 events
+            if events is not None and not events.empty:
+                events_csv = edf_dir / f"{edf_base}_events.csv"
+                events.to_csv(events_csv, index=False)
+                logger.info(f"✓ Events 已保存: {events_csv.name}")
+            
+            # 保存 messages
+            if messages is not None and not messages.empty:
+                messages_csv = edf_dir / f"{edf_base}_messages.csv"
+                messages.to_csv(messages_csv, index=False)
+                logger.info(f"✓ Messages 已保存: {messages_csv.name}")
+                
+        except Exception as e:
+            logger.warning(f"保存解析数据失败: {e}")
         
         # 打开视频
         cap = cv2.VideoCapture(video_path)
@@ -208,7 +236,6 @@ def overlay_gaze_on_video(
         
         # 获取眼动数据的起始时间
         # samples 是 pandas DataFrame
-        logger.info(f"EDF samples 列名: {list(samples.columns)}")
         
         if 'time' not in samples.columns:
             logger.error("EDF 样本数据中未找到 'time' 列")
@@ -216,27 +243,37 @@ def overlay_gaze_on_video(
         
         start_time = samples['time'].min()
         logger.info(f"EDF 起始时间: {start_time}, 样本数: {len(samples)}")
+        logger.info(f"EDF samples 列名: {list(samples.columns)}")
         
-        # 查找注视点列名（只需查找一次）
-        # 优先使用左眼数据，如果没有则尝试其他格式
-        gx_col = None
-        gy_col = None
-        
-        for gx_name in ['gx_left', 'gx_right', 'gx', 'x', 'px']:
-            if gx_name in samples.columns:
-                gx_col = gx_name
-                break
-        
-        for gy_name in ['gy_left', 'gy_right', 'gy', 'y', 'py']:
-            if gy_name in samples.columns:
-                gy_col = gy_name
-                break
-        
-        if not gx_col or not gy_col:
-            logger.error(f"未找到注视点列。可用列: {list(samples.columns)}")
+        # 根据指定的眼睛选择注视点列
+        eye = eye.lower()
+        if eye == "right":
+            gx_col = "gx_right"
+            gy_col = "gy_right"
+        elif eye == "left":
+            gx_col = "gx_left"
+            gy_col = "gy_left"
+        else:
+            logger.error(f"无效的眼睛参数: {eye}，必须是 'left' 或 'right'")
             return False
         
-        logger.info(f"使用注视点列: {gx_col}, {gy_col}")
+        # 检查列是否存在
+        if gx_col not in samples.columns or gy_col not in samples.columns:
+            logger.error(f"未找到{eye}眼注视点列: {gx_col}, {gy_col}")
+            logger.error(f"可用列: {list(samples.columns)}")
+            return False
+        
+        # 检查数据有效性
+        valid_gx = samples[gx_col] > -10000
+        valid_gy = samples[gy_col] > -10000
+        valid_count = (valid_gx & valid_gy).sum()
+        
+        if valid_count == 0:
+            logger.error(f"{eye}眼数据全部无效 (全为 -32768)")
+            return False
+        
+        logger.info(f"使用 {eye} 眼数据: {gx_col}, {gy_col}")
+        logger.info(f"有效样本: {valid_count}/{len(samples)} ({valid_count/len(samples)*100:.1f}%)")
         logger.info(f"时间范围: {start_time:.2f} - {samples['time'].max():.2f} ms")
         logger.info(f"视频时长: {total_frames / fps:.2f} 秒")
         
