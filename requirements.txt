@@ -14,9 +14,10 @@ pygame>=2.5.0  # EyeLink 校准和验证界面
 # 录屏和视频处理
 opencv-python>=4.8.0  # 视频处理
 mss>=9.0.0  # 屏幕截图
-pyedfread>=0.1.3  # 读取 EDF 文件
 numpy>=1.24.0  # 数组处理
 pillow>=10.0.0  # 图像处理
+
+git+https://github.com/s-ccs/pyedfread
 
 # 注意：pylink 需要安装 EyeLink Developers Kit
 # 下载地址: https://www.sr-research.com/support/

@@ -225,6 +225,7 @@ class EyeLinkManager:
                 self.tracker.stopRecording()
                 
                 # 保存到本地
+                saved_edf_path = None
                 if save_local and local_dir and self.edf_file:
                     from pathlib import Path
                     from datetime import datetime
@@ -238,6 +239,7 @@ class EyeLinkManager:
                     try:
                         self.tracker.receiveDataFile(self.edf_file, str(local_file))
                         logger.info(f"✓ 已保存: {local_file}")
+                        saved_edf_path = local_file  # 保存实际路径
                     except Exception as e:
                         logger.error(f"传输失败: {e}")
                 
@@ -253,20 +255,14 @@ class EyeLinkManager:
                     # 停止录屏
                     video_path = screen_recorder.stop_recording()
                     
-                    if video_path and save_local and local_dir:
+                    # 如果有录屏且有 EDF 文件，进行 overlay 处理
+                    if video_path and saved_edf_path:
                         logger.info("处理录屏和 overlay...")
                         
-                        # EDF 文件路径
                         from pathlib import Path
-                        from datetime import datetime
-                        save_path = Path(local_dir)
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        edf_local = save_path / f"{timestamp}_{self.edf_file}"
                         
-                        # 等待 EDF 文件传输完成
-                        time.sleep(1)
-                        
-                        if edf_local.exists():
+                        # 使用实际保存的 EDF 文件路径
+                        if saved_edf_path.exists():
                             # 生成 overlay 视频
                             overlay_output = str(Path(video_path).with_name(
                                 Path(video_path).stem + "_gaze.mp4"
@@ -274,17 +270,21 @@ class EyeLinkManager:
                             
                             overlay_gaze_on_video(
                                 video_path=video_path,
-                                edf_path=str(edf_local),
+                                edf_path=str(saved_edf_path),
                                 output_path=overlay_output
                             )
                             
                             logger.info(f"✓ 原始录屏: {video_path}")
                             logger.info(f"✓ Overlay录屏: {overlay_output}")
                         else:
-                            logger.warning(f"EDF 文件未找到: {edf_local}")
+                            logger.warning(f"EDF 文件未找到: {saved_edf_path}")
+                    elif video_path:
+                        logger.info(f"✓ 录屏已保存: {video_path} (未进行 overlay)")
                 
                 except Exception as e:
                     logger.error(f"录屏处理失败: {e}")
+                    import traceback
+                    traceback.print_exc()
                 
                 return True
                 
