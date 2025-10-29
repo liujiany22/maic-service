@@ -21,7 +21,7 @@ import config
 from eyelink_manager import EYELINK_AVAILABLE, eyelink_manager
 from models import AckResponse, EyeLinkMarker, IngressPayload, MarkerType
 from utils import generate_event_brief
-from custom_control import initialize_custom_control, handle_control_message
+from custom_control import initialize_custom_control
 
 # 初始化日志
 logging.basicConfig(
@@ -213,28 +213,22 @@ async def send_eyelink_marker(
     request_id: str,
     timestamp: datetime
 ) -> None:
-    """发送标记到 EyeLink"""
+    """发送标记到 EyeLink（只发送 request_id）"""
     if not eyelink_manager.get_status().connected:
         return
     
     try:
-        event = payload.get("event", "")
-        data = payload.get("data", {})
-        
-        # 检查自定义处理
-        if handle_control_message(event, data):
-            return
-        
-        # 发送标准标记
+        # 只发送 request_id 作为标记
         marker = EyeLinkMarker(
             marker_type=MarkerType.MESSAGE,
-            message=f"EVENT {event}",
+            message=request_id,  # 简洁的标记：只发送 request_id
             timestamp=timestamp,
-            trial_id=data.get("trial_id"),
-            additional_data={"request_id": request_id, "event": event}
+            trial_id=None,
+            additional_data=None
         )
         
         eyelink_manager.send_marker(marker)
+        logger.debug(f"EyeLink 标记: {request_id}")
             
     except Exception as e:
         logger.error(f"Marker error: {e}")

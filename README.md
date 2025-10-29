@@ -77,18 +77,6 @@ eyelink_manager.stop_recording(save_local=True, local_dir="./logdata/eyelink_dat
 eyelink_manager.disconnect()
 ```
 
-### 自定义处理
-
-在 `custom_control.py` 的 `handle_control_message()` 中处理特殊事件：
-
-```python
-def handle_control_message(event_name: str, data: dict) -> bool:
-    if event_name == "SPECIAL_EVENT":
-        # 处理逻辑
-        return True  # 返回 True 阻止标准标记
-    return False
-```
-
 ## MAIC 平台集成
 
 MAIC 平台发送数据到 `/ingest` 端点：
@@ -96,10 +84,23 @@ MAIC 平台发送数据到 `/ingest` 端点：
 ```bash
 curl -X POST http://localhost:8123/ingest \
   -H "Content-Type: application/json" \
-  -d '{"event": "trial_start", "data": {"trial_id": "1"}}'
+  -d '{
+    "learning_stage_id": "68d2bd81246d68cef5e3308f",
+    "label": "P",
+    "update_params": {
+      "page_number": 5,
+      "enter_type": "up_enter",
+      "timestamp": "2025-10-24 21:55:48.973437"
+    },
+    "request_id": "cc44114a4f1e4dc8b5320a71ca5caf2a"
+  }'
 ```
 
-自动发送标记到 EyeLink（如果已连接并记录中）。
+系统会：
+1. 保存完整数据到 `logdata/YYYYMMDD-HHMMSS_<request_id>.txt`
+2. **只发送 `request_id` 作为 EyeLink 标记**（如果已连接并记录中）
+
+这样可以保持 EDF 文件精简，完整数据在日志文件中查看。
 
 ## 配置
 
