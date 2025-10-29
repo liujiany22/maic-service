@@ -241,55 +241,44 @@ def overlay_gaze_on_video(
         logger.info(f"视频时长: {total_frames / fps:.2f} 秒")
         
         frame_idx = 0
-        test_duration_frames = int(3 * fps)  # 3秒的测试点
         logger.info("开始处理视频...")
-        logger.info(f"前 {test_duration_frames} 帧将在屏幕中心绘制测试点（红色）")
         
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
             
-            # 前3秒绘制测试点（屏幕中心，红色，半径40）
-            if frame_idx < test_duration_frames:
-                test_x = width // 2
-                test_y = height // 2
-                cv2.circle(frame, (test_x, test_y), 40, (0, 0, 255), -1)  # 红色填充圆
-                cv2.putText(frame, f"TEST {frame_idx}/{test_duration_frames}", 
-                           (test_x - 80, test_y - 60), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            else:
-                # 计算当前帧对应的时间戳
-                # 视频时间从0开始，EDF时间从start_time开始
-                video_time_ms = (frame_idx / fps) * 1000  # 视频播放到的时间（毫秒）
-                edf_time = start_time + video_time_ms  # 对应的EDF时间戳
+            # 计算当前帧对应的时间戳
+            # 视频时间从0开始，EDF时间从start_time开始
+            video_time_ms = (frame_idx / fps) * 1000  # 视频播放到的时间（毫秒）
+            edf_time = start_time + video_time_ms  # 对应的EDF时间戳
+            
+            # 查找对应的眼动数据
+            # 找到最接近的眼动样本
+            time_diff = np.abs(samples['time'] - edf_time)
+            closest_idx = time_diff.idxmin()  # 使用 idxmin() 获取索引
+            
+            gx = samples.loc[closest_idx, gx_col]
+            gy = samples.loc[closest_idx, gy_col]
+            
+            # 调试：每100帧输出一次时间对应关系
+            if frame_idx % 100 == 0:
+                logger.debug(f"帧 {frame_idx}: 视频时间={video_time_ms:.2f}ms, "
+                           f"EDF时间={edf_time:.2f}ms, "
+                           f"最近样本时间={samples.loc[closest_idx, 'time']:.2f}ms, "
+                           f"gaze=({gx:.1f}, {gy:.1f})")
+            
+            # 绘制注视点 (检查有效性，EyeLink 无效值通常是 -32768 或 NaN)
+            if not np.isnan(gx) and not np.isnan(gy) and gx > -10000 and gy > -10000:
+                x = int(gx)
+                y = int(gy)
                 
-                # 查找对应的眼动数据
-                # 找到最接近的眼动样本
-                time_diff = np.abs(samples['time'] - edf_time)
-                closest_idx = time_diff.idxmin()  # 使用 idxmin() 获取索引
-                
-                gx = samples.loc[closest_idx, gx_col]
-                gy = samples.loc[closest_idx, gy_col]
-                
-                # 调试：每100帧输出一次时间对应关系
-                if frame_idx % 100 == 0:
-                    logger.debug(f"帧 {frame_idx}: 视频时间={video_time_ms:.2f}ms, "
-                               f"EDF时间={edf_time:.2f}ms, "
-                               f"最近样本时间={samples.loc[closest_idx, 'time']:.2f}ms, "
-                               f"gaze=({gx:.1f}, {gy:.1f})")
-                
-                # 绘制注视点 (检查有效性，EyeLink 无效值通常是 -32768 或 NaN)
-                if not np.isnan(gx) and not np.isnan(gy) and gx > -10000 and gy > -10000:
-                    x = int(gx)
-                    y = int(gy)
-                    
-                    # 确保坐标在范围内
-                    if 0 <= x < width and 0 <= y < height:
-                        # 绘制圆圈（绿色）
-                        cv2.circle(frame, (x, y), gaze_radius, gaze_color, 2)
-                        # 绘制中心点
-                        cv2.circle(frame, (x, y), 3, gaze_color, -1)
+                # 确保坐标在范围内
+                if 0 <= x < width and 0 <= y < height:
+                    # 绘制圆圈
+                    cv2.circle(frame, (x, y), gaze_radius, gaze_color, 2)
+                    # 绘制中心点
+                    cv2.circle(frame, (x, y), 3, gaze_color, -1)
             
             # 写入帧
             out.write(frame)
