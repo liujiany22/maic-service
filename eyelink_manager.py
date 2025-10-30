@@ -103,33 +103,18 @@ class EyeLinkManager:
                     self.tracker = pylink.EyeLink(host_ip)
                 
                 # 配置屏幕坐标
-                self.tracker.sendCommand(f"screen_pixel_coords 0 0 {screen_width-1} {screen_height-1}")
-                self.tracker.sendMessage(f"DISPLAY_COORDS 0 0 {screen_width-1} {screen_height-1}")
+                # 参考 link_sample.py 第 387-391 行
+                pix_msg = f"screen_pixel_coords 0 0 {screen_width-1} {screen_height-1}"
+                self.tracker.sendCommand(pix_msg)
                 
-                # 配置标准九点校准 (HV9)
-                # 参考: https://charlie-techblog.com/eyelink/3rd-programing/3rd_comand_ini/
-                
-                # 1. 设置校准类型为 HV9 (3x3 grid)
-                self.tracker.sendCommand("calibration_type = HV9")
-                
-                # 2. 明确设置校准点坐标 - HV9 标准九点
-                # 格式：x1,y1 x2,y2 ... (像素坐标)
-                # 九点布局（从中心开始）：
-                # 中心 → 左上 → 右上 → 右下 → 左下 → 左中 → 右中 → 上中 → 下中
-                w, h = screen_width, screen_height
-                cal_targets = f"{w//2},{h//2} " + \
-                             f"{w*1//10},{h*1//10} {w*9//10},{h*1//10} " + \
-                             f"{w*9//10},{h*9//10} {w*1//10},{h*9//10} " + \
-                             f"{w*1//10},{h//2} {w*9//10},{h//2} " + \
-                             f"{w//2},{h*1//10} {w//2},{h*9//10}"
-                self.tracker.sendCommand(f"calibration_targets = {cal_targets}")
-                self.tracker.sendCommand(f"validation_targets = {cal_targets}")
-                
-                logger.info("✓ 已配置九点校准 (HV9)")
+                dv_msg = f"DISPLAY_COORDS 0 0 {screen_width-1} {screen_height-1}"
+                self.tracker.sendMessage(dv_msg)
                 
                 # 保存屏幕尺寸供后续使用
                 self.screen_width = screen_width
                 self.screen_height = screen_height
+                
+                logger.debug("✓ 屏幕坐标已配置")
                 
                 self.status = EyeLinkStatus.CONNECTED
                 self.error_message = None
