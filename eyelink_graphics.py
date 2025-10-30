@@ -234,6 +234,21 @@ def setup_graphics(tracker, width, height):
         # 打开图形环境
         pylink.openGraphicsEx(genv)
         
+        # 在 openGraphics 之后设置校准参数（必须在这之后调用）
+        # 参考: SR Research 示例代码
+        
+        # 设置校准颜色（背景黑色，目标灰色）
+        pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
+        
+        # 设置目标大小（根据屏幕宽度自适应）
+        outer_size = int(width / 70.0)   # 外圈约 27 像素
+        inner_size = int(width / 300.0)  # 内圈约 6 像素
+        pylink.setTargetSize(outer_size, inner_size)
+        
+        # 设置声音（静音）
+        pylink.setCalibrationSounds("", "", "")
+        pylink.setDriftCorrectSounds("", "", "")
+        
         logger.info("EyeLink 图形界面设置成功")
         return genv
         

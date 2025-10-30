@@ -48,6 +48,8 @@ class EyeLinkManager:
         self.edf_file: Optional[str] = None
         self.session_timestamp: Optional[str] = None  # 会话时间戳
         self.error_message: Optional[str] = None
+        self.screen_width: int = 1920  # 屏幕宽度
+        self.screen_height: int = 1080  # 屏幕高度
         self._lock = threading.Lock()
         
     def connect(
@@ -106,28 +108,14 @@ class EyeLinkManager:
                 
                 # 配置标准九点校准 (HV9)
                 # 参考: https://charlie-techblog.com/eyelink/3rd-programing/3rd_comand_ini/
-                # 和 SR Research 示例代码
                 
                 # 1. 设置校准类型为 HV9 (3x3 grid)
                 self.tracker.sendCommand("calibration_type = HV9")
                 
-                # 2. 通过 PyLink API 设置校准颜色和目标大小
-                # 这些 API 调用是必需的，command 无法完全替代
-                pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))  # 背景黑色，目标灰色
-                
-                # 目标大小：外圈和内圈（根据屏幕宽度自适应）
-                outer_size = int(screen_width / 70.0)  # 约 27 像素 (1920/70)
-                inner_size = int(screen_width / 300.0)  # 约 6 像素 (1920/300)
-                pylink.setTargetSize(outer_size, inner_size)
-                
-                # 3. 设置校准/验证/漂移校正的声音（静音）
-                pylink.setCalibrationSounds("", "", "")
-                pylink.setDriftCorrectSounds("", "", "")
-                
-                # 4. (可选) 明确设置校准点坐标 - HV9 标准九点
-                # 格式：x1,y1 x2,y2 ... (百分比坐标，屏幕中心为原点)
+                # 2. 明确设置校准点坐标 - HV9 标准九点
+                # 格式：x1,y1 x2,y2 ... (像素坐标)
                 # 九点布局（从中心开始）：
-                # 1-左上  2-右上  3-右下  4-左下  5-左中  6-右中  7-上中  8-下中  9-中心
+                # 中心 → 左上 → 右上 → 右下 → 左下 → 左中 → 右中 → 上中 → 下中
                 w, h = screen_width, screen_height
                 cal_targets = f"{w//2},{h//2} " + \
                              f"{w*1//10},{h*1//10} {w*9//10},{h*1//10} " + \
@@ -138,6 +126,10 @@ class EyeLinkManager:
                 self.tracker.sendCommand(f"validation_targets = {cal_targets}")
                 
                 logger.info("✓ 已配置九点校准 (HV9)")
+                
+                # 保存屏幕尺寸供后续使用
+                self.screen_width = screen_width
+                self.screen_height = screen_height
                 
                 self.status = EyeLinkStatus.CONNECTED
                 self.error_message = None
