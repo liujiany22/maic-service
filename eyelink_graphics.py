@@ -232,28 +232,49 @@ def setup_graphics(tracker, width, height):
         genv = EyeLinkCoreGraphicsPygame(width, height)
         
         # 打开图形环境
+        # 注意：openGraphicsEx 会自动处理校准参数设置
         pylink.openGraphicsEx(genv)
         
-        # 在 openGraphics 之后设置校准参数（必须在这之后调用）
-        # 参考: SR Research 示例代码
+        logger.info("✓ openGraphics 完成")
         
-        # 设置校准颜色（背景黑色，目标灰色）
-        pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
+        # PyLink API 校准设置（可选）
+        # 注意：某些 PyLink 版本可能不支持在 openGraphics 之后调用这些函数
+        # 如果失败，EyeLink 会使用默认值，校准仍然可以正常工作
         
-        # 设置目标大小（根据屏幕宽度自适应）
-        outer_size = int(width / 70.0)   # 外圈约 27 像素
-        inner_size = int(width / 300.0)  # 内圈约 6 像素
-        pylink.setTargetSize(outer_size, inner_size)
+        try:
+            # 尝试设置校准颜色（背景黑色，目标灰色）
+            pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
+            logger.debug("✓ setCalibrationColors 完成")
+        except Exception as e:
+            logger.debug(f"setCalibrationColors 跳过: {e}")
+            # 不是致命错误，继续
         
-        # 设置声音（静音）
-        pylink.setCalibrationSounds("", "", "")
-        pylink.setDriftCorrectSounds("", "", "")
+        try:
+            # 尝试设置目标大小
+            outer_size = int(width / 70.0)   # 外圈约 27 像素
+            inner_size = int(width / 300.0)  # 内圈约 6 像素
+            pylink.setTargetSize(outer_size, inner_size)
+            logger.debug("✓ setTargetSize 完成")
+        except Exception as e:
+            logger.debug(f"setTargetSize 跳过: {e}")
+            # 不是致命错误，继续
+        
+        try:
+            # 尝试设置声音（静音）
+            pylink.setCalibrationSounds("", "", "")
+            pylink.setDriftCorrectSounds("", "", "")
+            logger.debug("✓ 声音设置完成")
+        except Exception as e:
+            logger.debug(f"声音设置跳过: {e}")
+            # 不是致命错误，继续
         
         logger.info("EyeLink 图形界面设置成功")
         return genv
         
     except Exception as e:
         logger.error(f"设置图形界面失败: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
