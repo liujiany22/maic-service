@@ -215,9 +215,21 @@ def overlay_gaze_on_video(
             logger.error("EDF 样本数据中未找到 'time' 列")
             return False
         
-        start_time = samples['time'].min()
-        logger.info(f"EDF 起始时间: {start_time}, 样本数: {len(samples)}")
-        logger.info(f"EDF samples 列名: {list(samples.columns)}")
+                # 尝试从 messages 中找到 SYNCTIME
+        start_time = None
+        if messages is not None and not messages.empty and 'text' in messages.columns:
+            synctime_msgs = messages[messages['text'].str.contains('SYNCTIME', na=False)]
+            if not synctime_msgs.empty and 'time' in messages.columns:
+                start_time = synctime_msgs.iloc[0]['time']
+                logger.info(f"使用 SYNCTIME 消息作为起始时间: {start_time}")
+        
+        # 如果没有 SYNCTIME，使用第一个样本的时间
+        if start_time is None:
+            start_time = samples['time'].iloc[0]  # 使用第一个样本，而不是 min()
+            logger.info(f"使用第一个样本时间作为起始时间: {start_time}")
+        
+        logger.info(f"样本数: {len(samples)}, 时间范围: {samples['time'].iloc[0]:.2f} - {samples['time'].iloc[-1]:.2f} ms")
+        logger.debug(f"EDF samples 列名: {list(samples.columns)}")
         
         # 根据指定的眼睛选择注视点列
         eye = eye.lower()

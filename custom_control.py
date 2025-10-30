@@ -9,10 +9,17 @@ import threading
 from typing import Optional
 
 from eyelink_manager import eyelink_manager, EYELINK_AVAILABLE
-from eyelink_graphics import PYGAME_AVAILABLE
 import config
 
 logger = logging.getLogger(__name__)
+
+# 检查 pygame 是否可用
+try:
+    import pygame
+    PYGAME_AVAILABLE = True
+except ImportError:
+    PYGAME_AVAILABLE = False
+    logger.warning("pygame 不可用，图形界面功能将被禁用")
 
 
 # ==================== 实验流程控制 ====================
@@ -178,9 +185,16 @@ def start_experiment_control():
             except Exception as e:
                 logger.error(f"错误: {e}")
         
-        # 清理
-        from eyelink_graphics import close_graphics
-        close_graphics()
+        # 清理图形界面
+        try:
+            if EYELINK_AVAILABLE:
+                import pylink
+                pylink.closeGraphics()
+            if PYGAME_AVAILABLE:
+                pygame.quit()
+            logger.info("图形界面已关闭")
+        except Exception as e:
+            logger.error(f"关闭图形界面时出错: {e}")
     
     # 后台线程运行
     thread = threading.Thread(target=control_loop, daemon=True)

@@ -21,10 +21,9 @@ python main.py
 ```
 ├── main.py                 # 主服务
 ├── config.py               # 配置
-├── eyelink_manager.py      # 眼动仪管理（核心API）
-├── eyelink_graphics.py     # 校准界面 (pygame)
+├── eyelink_manager.py      # 眼动仪管理（核心API，含校准功能）
+├── screen_recorder.py      # 屏幕录制和眼动数据叠加
 ├── custom_control.py       # 实验控制
-├── experiment_example.py   # 使用示例
 ├── models.py               # 数据模型
 └── utils.py                # 工具函数
 ```
@@ -35,15 +34,20 @@ python main.py
 
 ```
 > connect        # 连接（如果未自动连接）
-> c              # 校准
-> v              # 验证  
-> d              # 漂移校正
-> start          # 开始记录（使用 test.edf）
+> c              # 校准（自动按 C 开始，完成后按 ESC 退出）
+> v              # 验证（自动按 V 开始，完成后按 ESC 退出）
+> d              # 漂移校正（自动开始，完成后自动退出）
+> start          # 开始记录
 > marker TEST    # 发送标记
 > end            # 结束并自动保存到 logdata/eyelink_data/
 > status         # 查看状态
 > quit           # 退出
 ```
+
+**注意**：
+- 校准和验证会自动开始，无需手动按键
+- 完成后按 **ESC** 退出查看结果界面
+- 漂移校正会自动完成，无需按键
 
 ## EyeLink API
 
@@ -55,17 +59,17 @@ from eyelink_manager import eyelink_manager
 # 连接
 eyelink_manager.connect(host_ip="100.1.1.1")
 
-# 校准
+# 校准（自动按 C 开始）
 eyelink_manager.do_calibration(1920, 1080)
 
-# 验证
+# 验证（自动按 V 开始）
 eyelink_manager.do_validation(1920, 1080)
 
-# 漂移校正
+# 漂移校正（自动开始和完成）
 eyelink_manager.do_drift_correct(960, 540, 1920, 1080)
 
 # 开始记录
-eyelink_manager.start_recording("test.edf")
+success, timestamp = eyelink_manager.start_recording()
 
 # 发送标记
 eyelink_manager.send_message("EVENT_START")
@@ -76,6 +80,11 @@ eyelink_manager.stop_recording(save_local=True, local_dir="./logdata/eyelink_dat
 # 断开
 eyelink_manager.disconnect()
 ```
+
+**自动触发说明**：
+- `do_calibration()`: 进入界面后自动按 'C' 键开始校准，完成后需按 ESC 退出
+- `do_validation()`: 进入界面后自动按 'V' 键开始验证，完成后需按 ESC 退出  
+- `do_drift_correct()`: 自动开始并完成漂移校正，无需按键
 
 ## MAIC 平台集成
 

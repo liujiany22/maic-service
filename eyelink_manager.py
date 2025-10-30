@@ -102,20 +102,11 @@ class EyeLinkManager:
                     logger.info(f"连接到设备: {host_ip}")
                     self.tracker = pylink.EyeLink(host_ip)
                 
-                # 配置屏幕坐标
-                # 参考 link_sample.py 第 387-391 行
-                pix_msg = f"screen_pixel_coords 0 0 {screen_width-1} {screen_height-1}"
-                self.tracker.sendCommand(pix_msg)
-                
-                dv_msg = f"DISPLAY_COORDS 0 0 {screen_width-1} {screen_height-1}"
-                self.tracker.sendMessage(dv_msg)
                 
                 # 保存屏幕尺寸供后续使用
                 self.screen_width = screen_width
                 self.screen_height = screen_height
-                
-                logger.debug("✓ 屏幕坐标已配置")
-                
+                                
                 self.status = EyeLinkStatus.CONNECTED
                 self.error_message = None
                 logger.info("EyeLink 连接成功")
@@ -394,7 +385,7 @@ class EyeLinkManager:
     
     def do_calibration(self, width: int = 1920, height: int = 1080) -> bool:
         """
-        执行校准
+        执行校准（自动开始）
         
         Args:
             width: 屏幕宽度
@@ -402,25 +393,92 @@ class EyeLinkManager:
             
         Returns:
             成功返回 True
+            
+        行为说明：
+            - 进入校准界面后自动按 'C' 开始校准
+            - 被试注视各个校准点完成校准
+            - 校准完成后显示结果，用户按 ESC 退出
         """
         if not self.tracker:
             logger.error("未连接到 EyeLink")
             return False
         
         try:
-            from eyelink_graphics import do_tracker_setup
             logger.info("开始校准...")
-            success = do_tracker_setup(self.tracker, width, height)
-            if success:
-                logger.info("✓ 校准完成")
-            return success
+            
+            # 设置采样率
+            self.tracker.sendCommand("sample_rate 1000")
+
+            # 打开图形界面
+            pylink.openGraphics()
+
+            # 设置校准参数
+            pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
+            pylink.setTargetSize(int(self.screen_width/70.0), int(self.screen_width/300.))
+            pylink.setCalibrationSounds("", "", "")
+            pylink.setDriftCorrectSounds("", "", "")
+
+            # 自动开始校准
+            self._auto_trigger_calibration()
+
+            # 关闭图形界面
+            pylink.closeGraphics()
+            
+            logger.info("✓ 校准完成")
+            return True
+            
         except Exception as e:
             logger.error(f"校准失败: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # 确保关闭图形界面
+            try:
+                pylink.closeGraphics()
+            except:
+                pass
+            
             return False
+    
+    def _auto_trigger_calibration(self):
+        """
+        自动触发校准（模拟按 'C' 键）
+        
+        实现方式：
+            1. 在后台线程中进入 doTrackerSetup()
+            2. 等待进入设置界面
+            3. 自动发送 'C' 键开始校准
+            4. 等待用户完成并按 ESC 退出
+        """
+        import threading
+        
+        # 标志：是否已经发送了 'C' 键
+        c_sent = threading.Event()
+        
+        def send_c_key():
+            """在后台发送 'C' 键"""
+            time.sleep(1.0)  # 等待进入设置界面
+            try:
+                logger.info("自动按下 'C' 键开始校准...")
+                self.tracker.sendKeyButton(ord('C'), 0, pylink.KB_PRESS)
+                c_sent.set()
+            except Exception as e:
+                logger.error(f"发送 'C' 键失败: {e}")
+        
+        # 启动后台线程发送 'C' 键
+        thread = threading.Thread(target=send_c_key, daemon=True)
+        thread.start()
+        
+        # 进入设置界面（阻塞，直到用户按 ESC 退出）
+        logger.info("进入校准界面...")
+        self.tracker.doTrackerSetup()
+        
+        # 等待线程完成
+        thread.join(timeout=2)
     
     def do_validation(self, width: int = 1920, height: int = 1080) -> bool:
         """
-        执行验证（与校准使用相同界面，在界面中选择 validate）
+        执行验证（自动开始）
         
         Args:
             width: 屏幕宽度
@@ -428,12 +486,85 @@ class EyeLinkManager:
             
         Returns:
             成功返回 True
+            
+        行为说明：
+            - 进入设置界面后自动按 'V' 开始验证
+            - 被试注视各个验证点
+            - 验证完成后显示结果，用户按 ESC 退出
         """
-        return self.do_calibration(width, height)
+        if not self.tracker:
+            logger.error("未连接到 EyeLink")
+            return False
+        
+        try:
+            logger.info("开始验证...")
+            
+            # 打开图形界面
+            pylink.openGraphics()
+
+            # 设置校准参数（验证使用相同参数）
+            pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
+            pylink.setTargetSize(int(self.screen_width/70.0), int(self.screen_width/300.))
+            pylink.setCalibrationSounds("", "", "")
+            pylink.setDriftCorrectSounds("", "", "")
+
+            # 自动开始验证
+            self._auto_trigger_validation()
+
+            # 关闭图形界面
+            pylink.closeGraphics()
+            
+            logger.info("✓ 验证完成")
+            return True
+            
+        except Exception as e:
+            logger.error(f"验证失败: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # 确保关闭图形界面
+            try:
+                pylink.closeGraphics()
+            except:
+                pass
+            
+            return False
+    
+    def _auto_trigger_validation(self):
+        """
+        自动触发验证（模拟按 'V' 键）
+        
+        实现方式：
+            1. 在后台线程中进入 doTrackerSetup()
+            2. 等待进入设置界面
+            3. 自动发送 'V' 键开始验证
+            4. 等待用户完成并按 ESC 退出
+        """
+        import threading
+        
+        def send_v_key():
+            """在后台发送 'V' 键"""
+            time.sleep(1.0)  # 等待进入设置界面
+            try:
+                logger.info("自动按下 'V' 键开始验证...")
+                self.tracker.sendKeyButton(ord('V'), 0, pylink.KB_PRESS)
+            except Exception as e:
+                logger.error(f"发送 'V' 键失败: {e}")
+        
+        # 启动后台线程发送 'V' 键
+        thread = threading.Thread(target=send_v_key, daemon=True)
+        thread.start()
+        
+        # 进入设置界面（阻塞，直到用户按 ESC 退出）
+        logger.info("进入验证界面...")
+        self.tracker.doTrackerSetup()
+        
+        # 等待线程完成
+        thread.join(timeout=2)
     
     def do_drift_correct(self, x: int = None, y: int = None, width: int = 1920, height: int = 1080) -> bool:
         """
-        执行漂移校正
+        执行漂移校正（自动开始）
         
         Args:
             x: 校正点 x 坐标（默认屏幕中心）
@@ -443,14 +574,18 @@ class EyeLinkManager:
             
         Returns:
             成功返回 True
+            
+        行为说明：
+            - 在指定位置显示校正点
+            - 被试注视校正点，系统自动采集数据
+            - 完成后自动退出
+            - 如果按 ESC，可以进入设置界面重新校准
         """
         if not self.tracker:
             logger.error("未连接到 EyeLink")
             return False
         
         try:
-            from eyelink_graphics import do_drift_correct
-            
             # 默认屏幕中心
             if x is None:
                 x = width // 2
@@ -458,12 +593,43 @@ class EyeLinkManager:
                 y = height // 2
             
             logger.info(f"漂移校正: ({x}, {y})")
-            success = do_drift_correct(self.tracker, x, y)
-            if success:
+            
+            # 打开图形界面
+            pylink.openGraphics()
+            
+            # 设置漂移校正参数
+            pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
+            pylink.setTargetSize(int(self.screen_width/70.0), int(self.screen_width/300.))
+            pylink.setDriftCorrectSounds("", "", "")
+            
+            # 执行漂移校正
+            # 参数：x, y, draw=1(绘制目标), allow_setup=1(允许按ESC进入setup)
+            result = self.tracker.doDriftCorrect(x, y, 1, 1)
+            
+            # 关闭图形界面
+            pylink.closeGraphics()
+            
+            if result == pylink.TRIAL_OK:
                 logger.info("✓ 漂移校正完成")
-            return success
+                return True
+            elif result == pylink.ESC_KEY:
+                logger.info("用户按 ESC 退出漂移校正")
+                return False
+            else:
+                logger.warning(f"漂移校正返回: {result}")
+                return False
+                
         except Exception as e:
             logger.error(f"漂移校正失败: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # 确保关闭图形界面
+            try:
+                pylink.closeGraphics()
+            except:
+                pass
+            
             return False
     
     def send_message(self, message: str) -> bool:
