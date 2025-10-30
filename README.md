@@ -98,9 +98,15 @@ curl -X POST http://localhost:8123/ingest \
 
 系统会：
 1. 保存完整数据到 `logdata/YYYYMMDD-HHMMSS_<request_id>.txt`
-2. **只发送 `request_id` 作为 EyeLink 标记**（如果已连接并记录中）
+2. **发送带 `MAIC_` 前缀的标记**到 EyeLink（如果已连接并记录中）
+   - 格式：`MAIC_<request_id>`
+   - 示例：`MAIC_cc44114a4f1e4dc8b5320a71ca5caf2a`
 
-这样可以保持 EDF 文件精简，完整数据在日志文件中查看。
+**MAIC 前缀的作用**：
+- ✅ 在 EDF 文件中明确标识来源
+- ✅ 与手动输入的 `marker` 命令区分
+- ✅ 便于在 `messages.csv` 中筛选（例如：`grep "MAIC_" messages.csv`）
+- ✅ 保持 EDF 文件精简，完整数据在日志文件中查看
 
 ## 配置
 
@@ -156,6 +162,28 @@ EYELINK_OVERLAY_EYE=right
 - Overlay 处理可能需要较长时间（取决于视频长度）
 - `pyedfread` 需要 SR Research EyeLink 开发工具包（Windows 平台）
 - **Overlay 默认使用右眼数据**，可通过 `EYELINK_OVERLAY_EYE` 配置为 `left` 或 `right`
+
+### 校准说明
+
+- **校准类型**：HV9（标准九点校准，3×3 网格）
+- **校准点布局**：
+  ```
+  1-------2-------3
+  |               |
+  4       5       6
+  |               |
+  7-------8-------9
+  ```
+  左上、上中、右上、左中、**中心**、右中、左下、下中、右下
+- **操作步骤**：
+  1. 输入 `c` 进入校准模式
+  2. 注视每个出现的校准点，保持头部不动
+  3. 按 `Enter` 或 `Space` 接受当前点
+  4. 完成所有点后，系统会显示校准结果
+  5. 按 `Enter` 接受校准，或 `Esc` 重新校准
+  6. **校准完成后窗口自动关闭**
+- **验证**：校准后建议执行验证（`v` 命令）确认精度
+- **漂移校正**：实验中可使用 `d` 命令快速校正（单点，不重新校准）
 
 ## API 文档
 

@@ -213,22 +213,22 @@ async def send_eyelink_marker(
     request_id: str,
     timestamp: datetime
 ) -> None:
-    """发送标记到 EyeLink（只发送 request_id）"""
+    """发送标记到 EyeLink（添加 MAIC 前缀标识）"""
     if not eyelink_manager.get_status().connected:
         return
     
     try:
-        # 只发送 request_id 作为标记
+        # 添加 MAIC 前缀，便于识别来自 MAIC 平台的消息
         marker = EyeLinkMarker(
             marker_type=MarkerType.MESSAGE,
-            message=request_id,  # 简洁的标记：只发送 request_id
+            message=f"MAIC_{request_id}",  # MAIC 前缀标识
             timestamp=timestamp,
             trial_id=None,
             additional_data=None
         )
         
         eyelink_manager.send_marker(marker)
-        logger.debug(f"EyeLink 标记: {request_id}")
+        logger.debug(f"EyeLink 标记: MAIC_{request_id}")
             
     except Exception as e:
         logger.error(f"Marker error: {e}")

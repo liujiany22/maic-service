@@ -262,6 +262,7 @@ def do_tracker_setup(tracker, width, height):
     执行 EyeLink 校准设置
     
     这是一个便捷函数，封装了完整的校准流程
+    校准完成后自动关闭图形界面
     
     Args:
         tracker: PyLink tracker 对象
@@ -283,9 +284,12 @@ def do_tracker_setup(tracker, width, height):
         
         # 进入校准模式
         logger.info("进入校准模式...")
-        tracker.doTrackerSetup()
+        logger.info("校准点布局：HV9 (九点校准)")
+        logger.info("操作：注视每个点，按 Enter/Space 接受，完成后窗口自动关闭")
         
-        logger.info("校准完成")
+        result = tracker.doTrackerSetup()
+        
+        logger.info("校准流程完成")
         return True
         
     except Exception as e:
@@ -293,8 +297,12 @@ def do_tracker_setup(tracker, width, height):
         return False
     
     finally:
-        # 不在这里关闭图形界面，让 close_graphics() 统一处理
-        pass
+        # 校准完成后自动关闭图形界面
+        try:
+            close_graphics()
+            logger.info("校准窗口已关闭")
+        except Exception as e:
+            logger.warning(f"关闭图形界面时出错: {e}")
 
 
 def do_drift_correct(tracker, x, y, draw=1, allow_setup=1):

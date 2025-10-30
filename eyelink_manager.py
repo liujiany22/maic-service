@@ -104,6 +104,17 @@ class EyeLinkManager:
                 self.tracker.sendCommand(f"screen_pixel_coords 0 0 {screen_width-1} {screen_height-1}")
                 self.tracker.sendMessage(f"DISPLAY_COORDS 0 0 {screen_width-1} {screen_height-1}")
                 
+                # 配置标准九点校准 (HV9)
+                self.tracker.sendCommand("calibration_type = HV9")
+                logger.info("校准类型: HV9 (九点校准)")
+                
+                # 设置校准点自动步进
+                self.tracker.sendCommand("enable_automatic_calibration = YES")
+                
+                # 设置校准目标颜色和大小（可选）
+                self.tracker.sendCommand("calibration_area_proportion = 0.88 0.83")
+                self.tracker.sendCommand("validation_area_proportion = 0.88 0.83")
+                
                 self.status = EyeLinkStatus.CONNECTED
                 self.error_message = None
                 logger.info("EyeLink 连接成功")

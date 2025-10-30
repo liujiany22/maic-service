@@ -184,32 +184,6 @@ def overlay_gaze_on_video(
             logger.error("EDF 数据中未找到有效 samples")
             return False
         
-        # 保存解析后的 EDF 数据为 CSV（便于查看）
-        try:
-            edf_base = Path(edf_path).stem  # 获取文件名（不含扩展名）
-            edf_dir = Path(edf_path).parent
-            
-            # 保存 samples
-            if samples is not None and not samples.empty:
-                samples_csv = edf_dir / f"{edf_base}_samples.csv"
-                samples.to_csv(samples_csv, index=False)
-                logger.info(f"✓ Samples 已保存: {samples_csv.name}")
-            
-            # 保存 events
-            if events is not None and not events.empty:
-                events_csv = edf_dir / f"{edf_base}_events.csv"
-                events.to_csv(events_csv, index=False)
-                logger.info(f"✓ Events 已保存: {events_csv.name}")
-            
-            # 保存 messages
-            if messages is not None and not messages.empty:
-                messages_csv = edf_dir / f"{edf_base}_messages.csv"
-                messages.to_csv(messages_csv, index=False)
-                logger.info(f"✓ Messages 已保存: {messages_csv.name}")
-                
-        except Exception as e:
-            logger.warning(f"保存解析数据失败: {e}")
-        
         # 打开视频
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -298,8 +272,8 @@ def overlay_gaze_on_video(
             gx = samples.loc[closest_idx, gx_col]
             gy = samples.loc[closest_idx, gy_col]
             
-            # 调试：每100帧输出一次时间对应关系
-            if frame_idx % 100 == 0:
+            # 调试：每1000帧输出一次时间对应关系
+            if frame_idx % 1000 == 0:
                 logger.debug(f"帧 {frame_idx}: 视频时间={video_time_ms:.2f}ms, "
                            f"EDF时间={edf_time:.2f}ms, "
                            f"最近样本时间={samples.loc[closest_idx, 'time']:.2f}ms, "
