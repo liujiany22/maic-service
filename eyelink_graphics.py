@@ -57,15 +57,18 @@ class EyeLinkCoreGraphicsPygame(pylink.EyeLinkCustomDisplay):
     
     def setup_cal_display(self):
         """设置校准显示"""
+        logger.info(f">>> setup_cal_display 被调用, size={self.size}")
+        
         if self.screen is None:
             self.screen = pygame.display.set_mode(
                 self.size,
                 pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
             )
+            logger.info(f"✓ pygame 窗口已创建: {self.size}")
         
         self.screen.fill(self.background_color)
         pygame.display.flip()
-        logger.debug("校准显示已设置")
+        logger.info("✓ 校准显示已设置")
     
     def exit_cal_display(self):
         """退出校准显示"""
@@ -94,6 +97,8 @@ class EyeLinkCoreGraphicsPygame(pylink.EyeLinkCustomDisplay):
             x: 目标 x 坐标
             y: 目标 y 坐标
         """
+        logger.info(f">>> draw_cal_target 被调用: x={x}, y={y}, screen={self.screen is not None}")
+        
         if self.screen:
             self.clear_cal_display()
             
@@ -116,7 +121,9 @@ class EyeLinkCoreGraphicsPygame(pylink.EyeLinkCustomDisplay):
             )
             
             pygame.display.flip()
-            logger.debug(f"绘制校准目标: ({x}, {y})")
+            logger.info(f"✓ 校准目标已绘制: ({x}, {y})")
+        else:
+            logger.error("screen 为 None，无法绘制校准目标")
     
     def play_beep(self, beep_type):
         """
@@ -208,74 +215,58 @@ def setup_graphics(tracker, width, height):
     """
     设置 EyeLink 图形界面
     
+    参考 SR Research 官方示例 link_sample.py 的实现流程
+    
     Args:
         tracker: PyLink tracker 对象
         width: 屏幕宽度
         height: 屏幕高度
         
     Returns:
-        图形界面对象，失败返回 None
+        成功返回 True，失败返回 False
     """
     if not PYGAME_AVAILABLE:
         logger.error("pygame 不可用，无法设置图形界面")
-        return None
+        return False
     
     if not PYLINK_AVAILABLE:
         logger.error("PyLink 不可用，无法设置图形界面")
-        return None
+        return False
     
     try:
-        # 初始化 pygame
-        pygame.init()
-        
-        # 创建图形界面对象
-        genv = EyeLinkCoreGraphicsPygame(width, height)
-        
-        # 打开图形环境
-        # 注意：openGraphicsEx 会自动处理校准参数设置
-        pylink.openGraphicsEx(genv)
+        # Step 1: 使用 PyLink 默认图形界面（不使用自定义类）
+        # 参考 link_sample.py 第 362 行
+        logger.info(f"初始化 PyLink 默认图形界面: {width}x{height}")
+        pylink.openGraphics((width, height), 32)
         
         logger.info("✓ openGraphics 完成")
         
-        # PyLink API 校准设置（可选）
-        # 注意：某些 PyLink 版本可能不支持在 openGraphics 之后调用这些函数
-        # 如果失败，EyeLink 会使用默认值，校准仍然可以正常工作
+        # Step 2: 在 openGraphics 之后设置校准参数
+        # 参考 link_sample.py 第 420-428 行
         
-        try:
-            # 尝试设置校准颜色（背景黑色，目标灰色）
-            pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
-            logger.debug("✓ setCalibrationColors 完成")
-        except Exception as e:
-            logger.debug(f"setCalibrationColors 跳过: {e}")
-            # 不是致命错误，继续
+        # 设置校准颜色（背景黑色，目标灰色）
+        pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
+        logger.debug("✓ setCalibrationColors 完成")
         
-        try:
-            # 尝试设置目标大小
-            outer_size = int(width / 70.0)   # 外圈约 27 像素
-            inner_size = int(width / 300.0)  # 内圈约 6 像素
-            pylink.setTargetSize(outer_size, inner_size)
-            logger.debug("✓ setTargetSize 完成")
-        except Exception as e:
-            logger.debug(f"setTargetSize 跳过: {e}")
-            # 不是致命错误，继续
+        # 设置目标大小
+        outer_size = int(width / 70.0)   # 外圈约 27 像素
+        inner_size = int(width / 300.0)  # 内圈约 6 像素
+        pylink.setTargetSize(outer_size, inner_size)
+        logger.debug("✓ setTargetSize 完成")
         
-        try:
-            # 尝试设置声音（静音）
-            pylink.setCalibrationSounds("", "", "")
-            pylink.setDriftCorrectSounds("", "", "")
-            logger.debug("✓ 声音设置完成")
-        except Exception as e:
-            logger.debug(f"声音设置跳过: {e}")
-            # 不是致命错误，继续
+        # 设置声音（静音）
+        pylink.setCalibrationSounds("", "", "")
+        pylink.setDriftCorrectSounds("", "", "")
+        logger.debug("✓ 声音设置完成")
         
         logger.info("EyeLink 图形界面设置成功")
-        return genv
+        return True
         
     except Exception as e:
         logger.error(f"设置图形界面失败: {e}")
         import traceback
         traceback.print_exc()
-        return None
+        return False
 
 
 def close_graphics():
@@ -312,20 +303,23 @@ def do_tracker_setup(tracker, width, height):
         return False
     
     try:
-        # 设置图形界面
-        genv = setup_graphics(tracker, width, height)
-        if not genv:
+        # Step 1: 设置图形界面和校准参数
+        success = setup_graphics(tracker, width, height)
+        if not success:
             return False
         
-        # 进入校准模式
+        # Step 2: 进入校准模式
+        # 参考 link_sample.py 第 431 行
         logger.info("进入校准模式...")
         tracker.doTrackerSetup()
         
-        logger.info("校准完成")
+        logger.info("✓ 校准完成")
         return True
         
     except Exception as e:
         logger.error(f"校准过程出错: {e}")
+        import traceback
+        traceback.print_exc()
         return False
     
     finally:
