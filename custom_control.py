@@ -6,7 +6,6 @@
 
 import logging
 import threading
-from typing import Optional
 
 from eyelink_manager import eyelink_manager, EYELINK_AVAILABLE
 import config
@@ -45,10 +44,11 @@ def start_experiment_control():
         print("\n" + "=" * 50)
         print("EyeLink 实验控制")
         print("=" * 50)
-        print("命令: connect=连接 c=校准 v=验证 d=漂移校正")
-        print("      start=开始记录 end=结束记录")
-        print("      marker <text>=发送标记")
-        print("      status=状态 quit=退出")
+        print("校准:   c=校准 v=验证 d=漂移校正")
+        print("录制:   start=开始录制 (EDF + 屏幕)")
+        print("        end=结束录制 (保存 + Overlay)")
+        print("其他:   marker <text>=发送标记")
+        print("        status=状态 quit=退出")
         print("=" * 50 + "\n")
         
         # 自动连接
@@ -74,70 +74,34 @@ def start_experiment_control():
                 parts = cmd.split(maxsplit=1)
                 action = parts[0].lower()
                 
-                # 连接
-                if action == "connect":
-                    if not EYELINK_AVAILABLE:
-                        print("错误: PyLink 未安装")
-                        continue
-                    success = eyelink_manager.connect(
-                        host_ip=config.EYELINK_HOST_IP,
-                        dummy_mode=config.EYELINK_DUMMY_MODE,
-                        screen_width=config.EYELINK_SCREEN_WIDTH,
-                        screen_height=config.EYELINK_SCREEN_HEIGHT
-                    )
-                    if success:
-                        print("✓ 已连接")
-                    else:
-                        print("✗ 连接失败")
-                
-                # 校准
-                elif action == "c":
+                # 打开 EyeLink 设置界面（校准/验证/漂移校正）
+                if action in {"c", "v", "d"}:
                     if not PYGAME_AVAILABLE:
                         print("错误: pygame 未安装")
                         continue
-                    eyelink_manager.do_calibration(
-                        config.EYELINK_SCREEN_WIDTH,
-                        config.EYELINK_SCREEN_HEIGHT
-                    )
+                    eyelink_manager.open_setup()
                 
-                # 验证
-                elif action == "v":
-                    if not PYGAME_AVAILABLE:
-                        print("错误: pygame 未安装")
-                        continue
-                    eyelink_manager.do_validation(
-                        config.EYELINK_SCREEN_WIDTH,
-                        config.EYELINK_SCREEN_HEIGHT
-                    )
-                
-                # 漂移校正
-                elif action == "d":
-                    if not PYGAME_AVAILABLE:
-                        print("错误: pygame 未安装")
-                        continue
-                    eyelink_manager.do_drift_correct(
-                        width=config.EYELINK_SCREEN_WIDTH,
-                        height=config.EYELINK_SCREEN_HEIGHT
-                    )
-                
-                # 开始记录
+                # 开始记录（EDF + 屏幕）
                 elif action == "start":
                     if experiment_running:
                         print("实验已在运行")
                         continue
                     
-                    success, timestamp = eyelink_manager.start_recording()
+                    # 启动 EyeLink 记录和屏幕录制
+                    success, timestamp = eyelink_manager.start_recording(enable_screen_recording=True)
                     if success:
                         experiment_running = True
-                        print(f"✓ 记录已开始 ({timestamp})")
+                        print(f"✓ EyeLink + 屏幕录制已开始 ({timestamp})")
                 
-                # 结束记录
+                # 结束记录（停止录制 + 保存 + Overlay）
                 elif action == "end":
                     if not experiment_running:
                         print("实验未运行")
                         continue
                     
-                    # 保存到本地
+                    print("停止录制并处理数据...")
+                    
+                    # 保存到本地（自动停止屏幕录制并 overlay）
                     save_dir = config.LOG_DIR / "eyelink_data"
                     success = eyelink_manager.stop_recording(
                         save_local=True,
@@ -146,7 +110,10 @@ def start_experiment_control():
                     
                     if success:
                         experiment_running = False
-                        print(f"✓ 记录已停止，文件保存在: {save_dir}")
+                        print(f"✓ 记录已停止")
+                        print(f"✓ 文件保存在: {save_dir}")
+                    else:
+                        print("✗ 停止记录失败")
                 
                 # 发送标记
                 elif action == "marker":
@@ -164,15 +131,17 @@ def start_experiment_control():
                 elif action == "status":
                     status = eyelink_manager.get_status()
                     print(f"连接: {status.connected}")
-                    print(f"记录: {status.recording}")
-                    print(f"文件: {status.edf_file or 'N/A'}")
+                    print(f"录制中: {status.recording}")
+                    if status.recording:
+                        print(f"会话ID: {eyelink_manager.current_timestamp}")
                 
                 # 退出
                 elif action == "quit":
                     if experiment_running:
-                        confirm = input("实验运行中，确认退出? (y/n): ")
+                        confirm = input("录制运行中，确认退出? (y/n): ")
                         if confirm.lower() != 'y':
                             continue
+                    
                     print("退出")
                     break
                 

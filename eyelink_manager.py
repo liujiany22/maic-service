@@ -12,16 +12,9 @@ EyeLink 眼动仪管理模块
 
 import logging
 import threading
-import time
 from typing import Optional
 
-from models import (
-    EyeLinkConfig,
-    EyeLinkMarker,
-    EyeLinkStatus,
-    EyeLinkStatusResponse,
-    MarkerType,
-)
+from models import EyeLinkMarker, EyeLinkStatus, EyeLinkStatusResponse, MarkerType
 
 # 尝试导入 PyLink
 try:
@@ -47,10 +40,11 @@ class EyeLinkManager:
         self.recording: bool = False
         self.edf_file: Optional[str] = None
         self.session_timestamp: Optional[str] = None  # 会话时间戳
+        self.current_video_label: Optional[str] = None  # 当前屏幕录制标签
         self.error_message: Optional[str] = None
         self.screen_width: int = 1920  # 屏幕宽度
         self.screen_height: int = 1080  # 屏幕高度
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # 使用可重入锁，允许同一线程多次获取
         
     def connect(
         self,
@@ -88,12 +82,6 @@ class EyeLinkManager:
             with self._lock:
                 self.status = EyeLinkStatus.CONNECTING
                 
-                # 打印连接参数
-                logger.info(f"连接参数:")
-                logger.info(f"  - 目标 IP: {host_ip}")
-                logger.info(f"  - 虚拟模式: {dummy_mode}")
-                logger.info(f"  - 屏幕尺寸: {screen_width} x {screen_height}")
-                
                 # 创建连接
                 if dummy_mode:
                     logger.info("使用虚拟模式")
@@ -110,6 +98,7 @@ class EyeLinkManager:
                 self.status = EyeLinkStatus.CONNECTED
                 self.error_message = None
                 logger.info("EyeLink 连接成功")
+                self.current_video_label = None
                 return True
                 
         except Exception as e:
@@ -135,7 +124,6 @@ class EyeLinkManager:
                 self.status = EyeLinkStatus.DISCONNECTED
                 self.recording = False
                 self.edf_file = None  # 清空 EDF 文件名
-                logger.info("Disconnected from EyeLink")
                 
         except Exception as e:
             logger.error(f"Error during disconnect: {e}", exc_info=True)
@@ -164,7 +152,7 @@ class EyeLinkManager:
         # 使用简短的时间戳：MMDDHHSS（月日时分秒）
         edf_short_name = datetime.now().strftime("%m%d%H%M") + ".edf"
         
-        logger.info(f"开始记录: {edf_short_name} (会话:{session_timestamp}, 录屏:{enable_screen_recording})")
+        logger.info(f"开始记录: {edf_short_name} (会话:{session_timestamp})")
         
         if not self.tracker:
             logger.error("未连接")
@@ -198,20 +186,29 @@ class EyeLinkManager:
                     logger.error(f"startRecording 错误: {error}")
                     return (False, None)
                 
+                # 等待数据流稳定（100ms）
+                import pylink
+                pylink.pumpDelay(100)
+                
                 self.recording = True
                 self.status = EyeLinkStatus.RECORDING
-                logger.info(f"✓ EyeLink 记录已开始")
-                
-                # 启动屏幕录制
-                if enable_screen_recording:
-                    try:
-                        from screen_recorder import screen_recorder
-                        # 使用会话时间戳作为录屏文件名
-                        screen_recorder.start_recording(session_timestamp)
-                    except Exception as e:
-                        logger.warning(f"屏幕录制启动失败: {e}")
-                
-                return (True, session_timestamp)
+                logger.info("EyeLink 记录已开始")
+            
+            # 启动屏幕录制（在锁外面执行，避免长时间持有锁）
+            if enable_screen_recording:
+                try:
+                    from screen_recorder import screen_recorder
+                    video_label = screen_recorder.start_recording()
+                    if video_label:
+                        logger.debug("屏幕录制已开始")
+                        self.send_message(f"SCREEN_REC_START_{video_label}")
+                        self.current_video_label = video_label
+                    else:
+                        logger.warning("屏幕录制启动失败: 未获取有效文件名")
+                except Exception as e:
+                    logger.warning(f"屏幕录制启动失败: {e}")
+            
+            return (True, session_timestamp)
                 
         except Exception as e:
             logger.error(f"记录启动失败: {e}")
@@ -233,7 +230,12 @@ class EyeLinkManager:
             
         try:
             with self._lock:
-                logger.info(f"停止记录: {self.edf_file}")
+                logger.info("停止记录")
+
+                # 在停止录制前记录屏幕录制结束标记
+                if self.current_video_label:
+                    self.send_message(f"SCREEN_REC_END_{self.current_video_label}")
+
                 self.tracker.stopRecording()
                 
                 # 保存到本地
@@ -249,7 +251,7 @@ class EyeLinkManager:
                     
                     try:
                         self.tracker.receiveDataFile(self.edf_file, str(local_file))
-                        logger.info(f"✓ EDF已保存: {local_file}")
+                        logger.debug(f"EDF 已保存: {local_file}")
                         saved_edf_path = local_file  # 保存实际路径
                     except Exception as e:
                         logger.error(f"EDF传输失败: {e}")
@@ -257,7 +259,40 @@ class EyeLinkManager:
                 self.tracker.closeDataFile()
                 self.recording = False
                 self.status = EyeLinkStatus.CONNECTED
-                logger.info("✓ EyeLink 记录已停止")
+                logger.info("EyeLink 记录已停止")
+                
+                # 解析 EDF 为 CSV
+                if saved_edf_path:
+                    try:
+                        logger.debug("解析 EDF 为 CSV")
+                        from pyedfread import read_edf
+                        from pathlib import Path
+                        
+                        if saved_edf_path.exists():
+                            # 读取 EDF
+                            samples, events, messages = read_edf(str(saved_edf_path), ignore_samples=False)
+                            
+                            # 保存 CSV
+                            csv_base = saved_edf_path.parent / self.session_timestamp
+                            
+                            if samples is not None and not samples.empty:
+                                samples_csv = f"{csv_base}_samples.csv"
+                                samples.to_csv(samples_csv, index=False)
+                            
+                            if events is not None and not events.empty:
+                                events_csv = f"{csv_base}_events.csv"
+                                events.to_csv(events_csv, index=False)
+                            
+                            if messages is not None and not messages.empty:
+                                messages_csv = f"{csv_base}_messages.csv"
+                                messages.to_csv(messages_csv, index=False)
+                        else:
+                            logger.warning(f"EDF 文件未找到: {saved_edf_path}")
+                    
+                    except Exception as e:
+                        logger.error(f"CSV 导出失败: {e}")
+                        import traceback
+                        traceback.print_exc()
                 
                 # 停止屏幕录制并处理 overlay
                 try:
@@ -268,7 +303,6 @@ class EyeLinkManager:
                     
                     # 如果有录屏且有 EDF 文件，进行 overlay 处理
                     if video_path and saved_edf_path:
-                        logger.info("处理 Overlay...")
                         
                         from pathlib import Path
                         
@@ -280,19 +314,18 @@ class EyeLinkManager:
                             # 导入配置
                             import config
                             
-                            overlay_gaze_on_video(
+                            success = overlay_gaze_on_video(
                                 video_path=video_path,
                                 edf_path=str(saved_edf_path),
-                                output_path=overlay_output,
-                                eye=config.EYELINK_OVERLAY_EYE
+                                output_path=overlay_output
                             )
                             
-                            logger.info(f"✓ 原始录屏: {Path(video_path).name}")
-                            logger.info(f"✓ Overlay录屏: {Path(overlay_output).name}")
+                            if not success:
+                                logger.error("Overlay 处理失败")
                         else:
                             logger.warning(f"EDF 文件未找到: {saved_edf_path}")
                     elif video_path:
-                        logger.info(f"✓ 录屏已保存 (无 Overlay)")
+                        logger.debug("录屏已保存 (无 Overlay)")
                 
                 except Exception as e:
                     logger.error(f"录屏处理失败: {e}")
@@ -303,6 +336,7 @@ class EyeLinkManager:
                 
         except Exception as e:
             logger.error(f"停止记录失败: {e}")
+            self.current_video_label = None
             return False
     
     def send_marker(self, marker: EyeLinkMarker) -> bool:
@@ -383,253 +417,45 @@ class EyeLinkManager:
             logger.error(f"发送标记失败: {e}")
             return False
     
-    def do_calibration(self, width: int = 1920, height: int = 1080) -> bool:
-        """
-        执行校准（自动开始）
-        
-        Args:
-            width: 屏幕宽度
-            height: 屏幕高度
-            
-        Returns:
-            成功返回 True
-            
-        行为说明：
-            - 进入校准界面后自动按 'C' 开始校准
-            - 被试注视各个校准点完成校准
-            - 校准完成后显示结果，用户按 ESC 退出
-        """
+    def open_setup(self) -> bool:
+        """打开 EyeLink 图形界面，用户可手动执行校准/验证/漂移校正"""
         if not self.tracker:
             logger.error("未连接到 EyeLink")
             return False
-        
+
         try:
-            logger.info("开始校准...")
-            
-            # 设置采样率
+            logger.info("打开 EyeLink 设置界面")
+
+            # 设置采样率（按照 SR Research 建议）
             self.tracker.sendCommand("sample_rate 1000")
 
-            # 打开图形界面
+            
+            pylink.closeGraphics()
             pylink.openGraphics()
 
-            # 设置校准参数
+            # 设置统一的图形参数
             pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
-            pylink.setTargetSize(int(self.screen_width/70.0), int(self.screen_width/300.))
+            pylink.setTargetSize(int(self.screen_width / 70.0), int(self.screen_width / 300.0))
             pylink.setCalibrationSounds("", "", "")
             pylink.setDriftCorrectSounds("", "", "")
 
-            # 自动开始校准
-            self._auto_trigger_calibration()
+            # 进入设置界面（用户可按 C/V/空格/ESC）
+            self.tracker.doTrackerSetup()
 
-            # 关闭图形界面
             pylink.closeGraphics()
-            
-            logger.info("✓ 校准完成")
+            logger.info("已关闭 EyeLink 设置界面")
             return True
-            
+
         except Exception as e:
-            logger.error(f"校准失败: {e}")
+            logger.error(f"打开设置界面失败: {e}")
             import traceback
             traceback.print_exc()
-            
-            # 确保关闭图形界面
+
             try:
                 pylink.closeGraphics()
             except:
                 pass
-            
-            return False
-    
-    def _auto_trigger_calibration(self):
-        """
-        自动触发校准（模拟按 'C' 键）
-        
-        实现方式：
-            1. 在后台线程中进入 doTrackerSetup()
-            2. 等待进入设置界面
-            3. 自动发送 'C' 键开始校准
-            4. 等待用户完成并按 ESC 退出
-        """
-        import threading
-        
-        # 标志：是否已经发送了 'C' 键
-        c_sent = threading.Event()
-        
-        def send_c_key():
-            """在后台发送 'C' 键"""
-            time.sleep(1.0)  # 等待进入设置界面
-            try:
-                logger.info("自动按下 'C' 键开始校准...")
-                self.tracker.sendKeyButton(ord('C'), 0, pylink.KB_PRESS)
-                c_sent.set()
-            except Exception as e:
-                logger.error(f"发送 'C' 键失败: {e}")
-        
-        # 启动后台线程发送 'C' 键
-        thread = threading.Thread(target=send_c_key, daemon=True)
-        thread.start()
-        
-        # 进入设置界面（阻塞，直到用户按 ESC 退出）
-        logger.info("进入校准界面...")
-        self.tracker.doTrackerSetup()
-        
-        # 等待线程完成
-        thread.join(timeout=2)
-    
-    def do_validation(self, width: int = 1920, height: int = 1080) -> bool:
-        """
-        执行验证（自动开始）
-        
-        Args:
-            width: 屏幕宽度
-            height: 屏幕高度
-            
-        Returns:
-            成功返回 True
-            
-        行为说明：
-            - 进入设置界面后自动按 'V' 开始验证
-            - 被试注视各个验证点
-            - 验证完成后显示结果，用户按 ESC 退出
-        """
-        if not self.tracker:
-            logger.error("未连接到 EyeLink")
-            return False
-        
-        try:
-            logger.info("开始验证...")
-            
-            # 打开图形界面
-            pylink.openGraphics()
 
-            # 设置校准参数（验证使用相同参数）
-            pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
-            pylink.setTargetSize(int(self.screen_width/70.0), int(self.screen_width/300.))
-            pylink.setCalibrationSounds("", "", "")
-            pylink.setDriftCorrectSounds("", "", "")
-
-            # 自动开始验证
-            self._auto_trigger_validation()
-
-            # 关闭图形界面
-            pylink.closeGraphics()
-            
-            logger.info("✓ 验证完成")
-            return True
-            
-        except Exception as e:
-            logger.error(f"验证失败: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            # 确保关闭图形界面
-            try:
-                pylink.closeGraphics()
-            except:
-                pass
-            
-            return False
-    
-    def _auto_trigger_validation(self):
-        """
-        自动触发验证（模拟按 'V' 键）
-        
-        实现方式：
-            1. 在后台线程中进入 doTrackerSetup()
-            2. 等待进入设置界面
-            3. 自动发送 'V' 键开始验证
-            4. 等待用户完成并按 ESC 退出
-        """
-        import threading
-        
-        def send_v_key():
-            """在后台发送 'V' 键"""
-            time.sleep(1.0)  # 等待进入设置界面
-            try:
-                logger.info("自动按下 'V' 键开始验证...")
-                self.tracker.sendKeyButton(ord('V'), 0, pylink.KB_PRESS)
-            except Exception as e:
-                logger.error(f"发送 'V' 键失败: {e}")
-        
-        # 启动后台线程发送 'V' 键
-        thread = threading.Thread(target=send_v_key, daemon=True)
-        thread.start()
-        
-        # 进入设置界面（阻塞，直到用户按 ESC 退出）
-        logger.info("进入验证界面...")
-        self.tracker.doTrackerSetup()
-        
-        # 等待线程完成
-        thread.join(timeout=2)
-    
-    def do_drift_correct(self, x: int = None, y: int = None, width: int = 1920, height: int = 1080) -> bool:
-        """
-        执行漂移校正（自动开始）
-        
-        Args:
-            x: 校正点 x 坐标（默认屏幕中心）
-            y: 校正点 y 坐标（默认屏幕中心）
-            width: 屏幕宽度
-            height: 屏幕高度
-            
-        Returns:
-            成功返回 True
-            
-        行为说明：
-            - 在指定位置显示校正点
-            - 被试注视校正点，系统自动采集数据
-            - 完成后自动退出
-            - 如果按 ESC，可以进入设置界面重新校准
-        """
-        if not self.tracker:
-            logger.error("未连接到 EyeLink")
-            return False
-        
-        try:
-            # 默认屏幕中心
-            if x is None:
-                x = width // 2
-            if y is None:
-                y = height // 2
-            
-            logger.info(f"漂移校正: ({x}, {y})")
-            
-            # 打开图形界面
-            pylink.openGraphics()
-            
-            # 设置漂移校正参数
-            pylink.setCalibrationColors((0, 0, 0), (128, 128, 128))
-            pylink.setTargetSize(int(self.screen_width/70.0), int(self.screen_width/300.))
-            pylink.setDriftCorrectSounds("", "", "")
-            
-            # 执行漂移校正
-            # 参数：x, y, draw=1(绘制目标), allow_setup=1(允许按ESC进入setup)
-            result = self.tracker.doDriftCorrect(x, y, 1, 1)
-            
-            # 关闭图形界面
-            pylink.closeGraphics()
-            
-            if result == pylink.TRIAL_OK:
-                logger.info("✓ 漂移校正完成")
-                return True
-            elif result == pylink.ESC_KEY:
-                logger.info("用户按 ESC 退出漂移校正")
-                return False
-            else:
-                logger.warning(f"漂移校正返回: {result}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"漂移校正失败: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            # 确保关闭图形界面
-            try:
-                pylink.closeGraphics()
-            except:
-                pass
-            
             return False
     
     def send_message(self, message: str) -> bool:
@@ -637,16 +463,43 @@ class EyeLinkManager:
         发送简单消息到 EyeLink
         
         Args:
-            message: 消息内容
+            message: 消息内容（最大 130 个字符）
             
         Returns:
             成功返回 True
+            
+        注意:
+            - 消息会被写入 EDF 文件
+            - 最大长度 130 字符，超出部分会被截断
+            - 只能在 CONNECTED 或 RECORDING 状态下发送
         """
+        # 检查 tracker 是否存在
         if not self.tracker:
+            logger.warning("无法发送消息: 未连接")
             return False
         
+        # 检查状态
+        if self.status not in [EyeLinkStatus.CONNECTED, EyeLinkStatus.RECORDING]:
+            logger.warning(f"无法发送消息: 状态不正确 ({self.status.value})")
+            return False
+        
+        # 检查消息长度
+        if len(message) > 130:
+            logger.warning(f"消息过长 ({len(message)} 字符)，将被截断为 130 字符")
+        
         try:
-            self.tracker.sendMessage(message)
+            with self._lock:
+                # sendMessage 返回值：0=成功无截断，1=成功但截断，异常=失败
+                result = self.tracker.sendMessage(message)
+                
+                if result == 0:
+                    logger.debug(f"消息已发送: {message}")
+                elif result == 1:
+                    logger.warning(f"消息已发送但被截断: {message[:130]}...")
+                else:
+                    logger.error(f"消息发送失败，返回值: {result}")
+                    return False
+                    
             return True
         except Exception as e:
             logger.error(f"发送消息失败: {e}")

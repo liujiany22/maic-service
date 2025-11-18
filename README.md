@@ -30,24 +30,47 @@ python main.py
 
 ## 实验控制
 
-服务启动后，如果启用自动连接会自动连接 EyeLink，否则手动连接：
+服务启动后自动连接 EyeLink（如果启用 `EYELINK_AUTO_CONNECT`）：
 
 ```
-> connect        # 连接（如果未自动连接）
-> c              # 校准（自动按 C 开始，完成后按 ESC 退出）
-> v              # 验证（自动按 V 开始，完成后按 ESC 退出）
-> d              # 漂移校正（自动开始，完成后自动退出）
-> start          # 开始记录
+> c              # 打开 EyeLink 设置界面（可在其中执行校准 / 验证 / 漂移校正）
+> v              # 同上（快捷命令）
+> d              # 同上（快捷命令）
+> start          # 开始录制（EyeLink + 屏幕）
+> end            # 结束录制（保存 + Overlay）
 > marker TEST    # 发送标记
-> end            # 结束并自动保存到 logdata/eyelink_data/
 > status         # 查看状态
 > quit           # 退出
 ```
 
-**注意**：
-- 校准和验证会自动开始，无需手动按键
-- 完成后按 **ESC** 退出查看结果界面
-- 漂移校正会自动完成，无需按键
+**录制流程**：
+
+1. **校准/验证/漂移校正**（推荐在开始录制前完成）
+   ```
+   > c          # 打开 EyeLink 设置界面（在界面中按 C/V/空格/ESC 操作）
+   ```
+
+2. **开始录制**
+   ```
+   > start      # 自动启动 EyeLink 记录 + 屏幕录制 + 发送同步标记
+   ```
+
+3. **实验过程中**
+   ```
+   > marker EVENT_1    # 发送标记到 EDF
+   ```
+
+4. **结束录制**
+   ```
+   > end        # 自动停止录制 → 保存 EDF → 保存视频 → 生成 Overlay
+   ```
+
+**自动处理**：
+- ✅ EDF 和视频自动时间同步（通过 `SCREEN_REC_START` 标记）
+- ✅ 自动保存 EDF 到 `logdata/eyelink_data/`
+- ✅ 自动保存视频到 `logdata/recordings/`
+- ✅ 自动生成带眼动轨迹的 overlay 视频
+- ✅ 校准界面不会被录制（避免全屏独占问题）
 
 ## EyeLink API
 
@@ -59,14 +82,8 @@ from eyelink_manager import eyelink_manager
 # 连接
 eyelink_manager.connect(host_ip="100.1.1.1")
 
-# 校准（自动按 C 开始）
-eyelink_manager.do_calibration(1920, 1080)
-
-# 验证（自动按 V 开始）
-eyelink_manager.do_validation(1920, 1080)
-
-# 漂移校正（自动开始和完成）
-eyelink_manager.do_drift_correct(960, 540, 1920, 1080)
+# 打开图形界面，在界面中按 C/V/空格/ESC
+eyelink_manager.open_setup()
 
 # 开始记录
 success, timestamp = eyelink_manager.start_recording()
@@ -80,11 +97,6 @@ eyelink_manager.stop_recording(save_local=True, local_dir="./logdata/eyelink_dat
 # 断开
 eyelink_manager.disconnect()
 ```
-
-**自动触发说明**：
-- `do_calibration()`: 进入界面后自动按 'C' 键开始校准，完成后需按 ESC 退出
-- `do_validation()`: 进入界面后自动按 'V' 键开始验证，完成后需按 ESC 退出  
-- `do_drift_correct()`: 自动开始并完成漂移校正，无需按键
 
 ## MAIC 平台集成
 
@@ -159,18 +171,27 @@ EYELINK_OVERLAY_EYE=right
 - `_events.csv`: 眼动事件（注视、眨眼、扫视等）
 - `_messages.csv`: 实验标记消息（trial_start、trial_end 等）
 
-使用 `end` 命令自动传输、保存和处理所有文件。
+**工作流程**：
+1. `start` 命令开始录制（自动发送 `SCREEN_REC_START_<timestamp>` 同步标记）
+2. `end` 命令自动：
+   - 停止屏幕录制
+   - 停止 EyeLink 录制
+   - 传输 EDF 文件到本地
+   - 生成 overlay 视频（自动使用同步标记对齐时间）
+   - 解析 EDF 为 CSV（samples, events, messages）
 
 ## 注意事项
 
 - 校准/验证需要 pygame 和显示器
-- 文件名自动使用时间戳，无需手动配置
+- 文件名自动使用时间戳（`YYYYMMDD_HHMMSS`），无需手动配置
 - dummy 模式用于无硬件测试
-- 文件传输可能需要手动操作（取决于网络配置）
-- 录屏功能需要安装: `pip install opencv-python mss pyedfread numpy pillow pandas`
+- 录屏功能需要安装: `pip install opencv-python mss numpy pandas pyedfread`
 - Overlay 处理可能需要较长时间（取决于视频长度）
 - `pyedfread` 需要 SR Research EyeLink 开发工具包（Windows 平台）
 - **Overlay 默认使用右眼数据**，可通过 `EYELINK_OVERLAY_EYE` 配置为 `left` 或 `right`
+- **校准界面不会被录制**（避免全屏独占窗口问题）
+- **`start` 命令自动开启 EDF 和屏幕录制**
+- **`end` 命令自动停止、保存、Overlay 一键完成**
 
 ### 校准说明
 
@@ -188,11 +209,10 @@ EYELINK_OVERLAY_EYE=right
 **呈现顺序**：中心(5) → 左上(1) → 右上(3) → 右下(9) → 左下(7) → 左中(4) → 右中(6) → 上中(2) → 下中(8)
 
 **操作流程**：
-1. 输入 `c` 进入校准模式
-2. 依次注视每个出现的校准点（自动呈现，无需手动切换）
-3. 系统自动采集每个点的数据
-4. 完成后显示校准结果（精度图）
-5. 按 `Enter` 接受校准，或按 `Esc` 重新校准
+1. 输入 `c`（或 `v` / `d`）打开 EyeLink 设置界面
+2. 在界面中按 `C` 开始校准（或按 `V` 进入验证，按空格进行漂移校正）
+3. 依次注视每个出现的校准/验证点，等待系统提示
+4. 完成后查看精度图，按 `Enter` 接受校准，或按 `Esc` 重新执行
 6. **按 `Esc` 退出校准界面回到控制台**
 
 **验证**：校准后建议执行验证（`v` 命令）确认精度

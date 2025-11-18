@@ -68,11 +68,3 @@ class EyeLinkStatusResponse(BaseModel):
     error_message: Optional[str] = None
 
 
-class EyeLinkConfig(BaseModel):
-    """眼动仪配置"""
-    host_ip: str
-    dummy_mode: bool = False
-    screen_width: int = 1920
-    screen_height: int = 1080
-    edf_filename: str = "experiment.edf"
-

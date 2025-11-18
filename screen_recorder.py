@@ -9,6 +9,7 @@ import threading
 import time
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +17,15 @@ logger = logging.getLogger(__name__)
 try:
     import cv2
     import numpy as np
-    from mss import mss
-    from PIL import Image
     RECORDING_AVAILABLE = True
 except ImportError:
     RECORDING_AVAILABLE = False
-    logger.warning("录屏依赖未安装: pip install opencv-python mss pillow numpy")
+
+try:
+    from mss import mss
+    MSS_AVAILABLE = True
+except ImportError:
+    MSS_AVAILABLE = False
 
 
 class ScreenRecorder:
@@ -42,7 +46,7 @@ class ScreenRecorder:
         self.writer = None
         self.output_file = None
         
-    def start_recording(self, filename: str = None) -> bool:
+    def start_recording(self, filename: str = None) -> Optional[str]:
         """
         开始录屏
         
@@ -50,15 +54,15 @@ class ScreenRecorder:
             filename: 输出文件名（不含扩展名）
             
         Returns:
-            成功返回 True
+            成功返回实际使用的文件名（不含扩展名），失败返回 None
         """
-        if not RECORDING_AVAILABLE:
+        if not RECORDING_AVAILABLE or not MSS_AVAILABLE:
             logger.error("录屏功能不可用")
-            return False
+            return None
         
         if self.recording:
             logger.warning("已在录制中")
-            return False
+            return None
         
         try:
             # 创建输出目录
@@ -91,27 +95,23 @@ class ScreenRecorder:
             self.thread = threading.Thread(target=self._record_loop, daemon=True)
             self.thread.start()
             
-            logger.info(f"录屏开始: {self.output_file}")
-            return True
+            logger.debug(f"屏幕录制开始: {self.output_file}")
+            return filename
             
         except Exception as e:
             logger.error(f"开始录屏失败: {e}")
-            return False
+            return None
     
     def _record_loop(self):
         """录制循环"""
         with mss() as sct:
-            monitor = sct.monitors[1]
+            monitor = sct.monitors[1]  # 主显示器
             
             while self.recording:
                 try:
-                    # 截图
+                    # 截取屏幕
                     screenshot = sct.grab(monitor)
-                    
-                    # 转换为 numpy 数组
                     frame = np.array(screenshot)
-                    
-                    # BGRA -> BGR
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
                     
                     # 写入视频
@@ -121,31 +121,24 @@ class ScreenRecorder:
                     time.sleep(1.0 / self.fps)
                     
                 except Exception as e:
-                    logger.error(f"录制帧错误: {e}")
-                    break
+                    logger.error(f"录制错误: {e}")
+                    time.sleep(1.0 / self.fps)
     
     def stop_recording(self) -> str:
-        """
-        停止录屏
-        
-        Returns:
-            输出文件路径
-        """
+        """停止录屏"""
         if not self.recording:
             return None
         
         self.recording = False
         
-        # 等待线程结束
         if self.thread:
             self.thread.join(timeout=2)
         
-        # 释放写入器
         if self.writer:
             self.writer.release()
             self.writer = None
         
-        logger.info(f"录屏结束: {self.output_file}")
+        logger.debug(f"屏幕录制结束: {self.output_file}")
         return str(self.output_file)
 
 
@@ -153,9 +146,8 @@ def overlay_gaze_on_video(
     video_path: str,
     edf_path: str,
     output_path: str = None,
-    gaze_color: tuple = (0, 255, 0),
-    gaze_radius: int = 10,
-    eye: str = "right"
+    fixation_color: tuple = (0, 0, 255),
+    saccade_color: tuple = (0, 255, 255)
 ) -> bool:
     """
     将眼动数据叠加到录屏视频上
@@ -166,8 +158,6 @@ def overlay_gaze_on_video(
         output_path: 输出文件路径
         gaze_color: 注视点颜色 (B, G, R)
         gaze_radius: 注视点半径
-        eye: 使用哪只眼睛的数据 ("left" 或 "right"，默认 "right")
-        
     Returns:
         成功返回 True
     """
@@ -175,7 +165,7 @@ def overlay_gaze_on_video(
         from pyedfread import read_edf
         
         # 读取 EDF 文件
-        logger.info(f"读取 EDF: {edf_path}")
+        logger.debug(f"读取 EDF: {edf_path}")
         # read_edf 返回三个 DataFrame: samples, events, messages
         samples, events, messages = read_edf(edf_path, ignore_samples=False)
         
@@ -196,7 +186,7 @@ def overlay_gaze_on_video(
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
-        logger.info(f"视频: {width}x{height} @ {fps}fps, {total_frames} 帧")
+        logger.debug(f"视频: {width}x{height} @ {fps}fps, {total_frames} 帧")
         
         # 输出文件
         if not output_path:
@@ -209,62 +199,143 @@ def overlay_gaze_on_video(
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         
         # 获取眼动数据的起始时间
-        # samples 是 pandas DataFrame
-        
         if 'time' not in samples.columns:
             logger.error("EDF 样本数据中未找到 'time' 列")
             return False
         
-                # 尝试从 messages 中找到 SYNCTIME
-        start_time = None
-        if messages is not None and not messages.empty and 'text' in messages.columns:
-            synctime_msgs = messages[messages['text'].str.contains('SYNCTIME', na=False)]
-            if not synctime_msgs.empty and 'time' in messages.columns:
-                start_time = synctime_msgs.iloc[0]['time']
-                logger.info(f"使用 SYNCTIME 消息作为起始时间: {start_time}")
+        # 从视频文件名提取时间戳（用于匹配同步标记）
+        video_filename = Path(video_path).stem
         
-        # 如果没有 SYNCTIME，使用第一个样本的时间
-        if start_time is None:
-            start_time = samples['time'].iloc[0]  # 使用第一个样本，而不是 min()
-            logger.info(f"使用第一个样本时间作为起始时间: {start_time}")
+        # 尝试从 messages 中找到对应的屏幕录制开始标记
+        screen_rec_start_time = None
+        screen_rec_end_time = None
+        if messages is not None and not messages.empty and 'time' in messages.columns:
+            # 兼容不同列名（pyedfread 可能使用 text 或 message）
+            message_col = None
+            if 'text' in messages.columns:
+                message_col = 'text'
+            elif 'message' in messages.columns:
+                message_col = 'message'
+
+            if message_col:
+                # 查找 SCREEN_REC_START_<timestamp> 标记
+                screen_rec_msgs = messages[messages[message_col].astype(str).str.contains('SCREEN_REC_START', na=False)]
+            else:
+                screen_rec_msgs = None
+            
+            if screen_rec_msgs is not None and not screen_rec_msgs.empty:
+                # 如果有多个，尝试匹配文件名中的时间戳
+                for idx, row in screen_rec_msgs.iterrows():
+                    msg_text = str(row[message_col])
+                    if video_filename in msg_text or msg_text.endswith(video_filename):
+                        screen_rec_start_time = row['time']
+                        logger.debug(f"找到屏幕录制开始标记: {msg_text} at {screen_rec_start_time} ms")
+                        break
+                
+                # 如果没有匹配到，使用第一个
+                if screen_rec_start_time is None:
+                    screen_rec_start_time = screen_rec_msgs.iloc[0]['time']
+                    logger.debug(f"使用第一个屏幕录制开始标记: {screen_rec_start_time} ms")
+
+            # 查找对应的结束标记
+            if message_col:
+                screen_rec_end_msgs = messages[messages[message_col].astype(str).str.contains('SCREEN_REC_END', na=False)]
+            else:
+                screen_rec_end_msgs = None
+
+            if screen_rec_end_msgs is not None and not screen_rec_end_msgs.empty:
+                for idx, row in screen_rec_end_msgs.iterrows():
+                    msg_text = str(row[message_col])
+                    if video_filename in msg_text or msg_text.endswith(video_filename):
+                        screen_rec_end_time = row['time']
+                        logger.debug(f"找到屏幕录制结束标记: {msg_text} at {screen_rec_end_time} ms")
+                        break
+
+                if screen_rec_end_time is None:
+                    screen_rec_end_time = screen_rec_end_msgs.iloc[-1]['time']
+                    logger.debug(f"使用最后一个屏幕录制结束标记: {screen_rec_end_time} ms")
         
-        logger.info(f"样本数: {len(samples)}, 时间范围: {samples['time'].iloc[0]:.2f} - {samples['time'].iloc[-1]:.2f} ms")
+        # 确定视频开始对应的 EDF 时间戳
+        if screen_rec_start_time is None:
+            logger.error("未找到屏幕录制开始标记，无法对齐视频与 EDF")
+            return False
+        if screen_rec_end_time is None or screen_rec_end_time <= screen_rec_start_time:
+            logger.error("未找到屏幕录制结束标记，无法对齐视频与 EDF")
+            return False
+
+        video_start_edf_time = screen_rec_start_time
+        edf_duration = screen_rec_end_time - screen_rec_start_time
+        logger.debug(f"使用同步标记，EDF 起点: {video_start_edf_time} ms，持续: {edf_duration} ms")
+        
+        logger.debug(f"样本范围: {samples['time'].iloc[0]:.2f} - {samples['time'].iloc[-1]:.2f} ms, 共 {len(samples)} 条")
         logger.debug(f"EDF samples 列名: {list(samples.columns)}")
-        
-        # 根据指定的眼睛选择注视点列
-        eye = eye.lower()
-        if eye == "right":
-            gx_col = "gx_right"
-            gy_col = "gy_right"
-        elif eye == "left":
-            gx_col = "gx_left"
-            gy_col = "gy_left"
-        else:
-            logger.error(f"无效的眼睛参数: {eye}，必须是 'left' 或 'right'")
-            return False
-        
-        # 检查列是否存在
-        if gx_col not in samples.columns or gy_col not in samples.columns:
-            logger.error(f"未找到{eye}眼注视点列: {gx_col}, {gy_col}")
-            logger.error(f"可用列: {list(samples.columns)}")
-            return False
-        
-        # 检查数据有效性
-        valid_gx = samples[gx_col] > -10000
-        valid_gy = samples[gy_col] > -10000
-        valid_count = (valid_gx & valid_gy).sum()
-        
-        if valid_count == 0:
-            logger.error(f"{eye}眼数据全部无效 (全为 -32768)")
-            return False
-        
-        logger.info(f"使用 {eye} 眼数据: {gx_col}, {gy_col}")
-        logger.info(f"有效样本: {valid_count}/{len(samples)} ({valid_count/len(samples)*100:.1f}%)")
-        logger.info(f"时间范围: {start_time:.2f} - {samples['time'].max():.2f} ms")
-        logger.info(f"视频时长: {total_frames / fps:.2f} 秒")
+
+        # 预处理事件（fixation / saccade）
+        fixation_events = []
+        saccade_events = []
+        if events is not None and not events.empty:
+            for _, row in events.iterrows():
+                event_type = str(row.get("type", "")).lower()
+                try:
+                    start = float(row.get("start"))
+                    end = float(row.get("end"))
+                except (TypeError, ValueError):
+                    continue
+                if not np.isfinite(start) or not np.isfinite(end) or end <= start:
+                    continue
+
+                if event_type == "fixation":
+                    # 使用平均坐标，如果缺失则退回起始坐标
+                    x = row.get("gavx")
+                    y = row.get("gavy")
+                    if x is None or not np.isfinite(x):
+                        x = row.get("gstx")
+                    if y is None or not np.isfinite(y):
+                        y = row.get("gsty")
+                    if x is None or y is None:
+                        continue
+                    x = float(x)
+                    y = float(y)
+                    if not (np.isfinite(x) and np.isfinite(y)):
+                        continue
+                    duration = end - start
+                    fixation_events.append({
+                        "start": start,
+                        "end": end,
+                        "x": x,
+                        "y": y,
+                        "duration": duration
+                    })
+                elif event_type == "saccade":
+                    sx = row.get("gstx")
+                    sy = row.get("gsty")
+                    ex = row.get("genx")
+                    ey = row.get("geny")
+                    if None in (sx, sy, ex, ey):
+                        continue
+                    sx = float(sx)
+                    sy = float(sy)
+                    ex = float(ex)
+                    ey = float(ey)
+                    if not (np.isfinite(sx) and np.isfinite(sy) and np.isfinite(ex) and np.isfinite(ey)):
+                        continue
+                    saccade_events.append({
+                        "start": start,
+                        "end": end,
+                        "sx": sx,
+                        "sy": sy,
+                        "ex": ex,
+                        "ey": ey
+                    })
+
+        fixation_events.sort(key=lambda ev: ev["start"])
+        saccade_events.sort(key=lambda ev: ev["start"])
+        fixation_idx = 0
+        saccade_idx = 0
         
         frame_idx = 0
-        logger.info("开始处理视频...")
+        base_radius = 4
+        max_radius = 16
         
         while True:
             ret, frame = cap.read()
@@ -272,46 +343,44 @@ def overlay_gaze_on_video(
                 break
             
             # 计算当前帧对应的时间戳
-            # 视频时间从0开始，EDF时间从start_time开始
-            video_time_ms = (frame_idx / fps) * 1000  # 视频播放到的时间（毫秒）
-            edf_time = start_time + video_time_ms  # 对应的EDF时间戳
-            
-            # 查找对应的眼动数据
-            # 找到最接近的眼动样本
-            time_diff = np.abs(samples['time'] - edf_time)
-            closest_idx = time_diff.idxmin()  # 使用 idxmin() 获取索引
-            
-            gx = samples.loc[closest_idx, gx_col]
-            gy = samples.loc[closest_idx, gy_col]
-            
-            # 调试：每1000帧输出一次时间对应关系
-            if frame_idx % 1000 == 0:
-                logger.debug(f"帧 {frame_idx}: 视频时间={video_time_ms:.2f}ms, "
-                           f"EDF时间={edf_time:.2f}ms, "
-                           f"最近样本时间={samples.loc[closest_idx, 'time']:.2f}ms, "
-                           f"gaze=({gx:.1f}, {gy:.1f})")
-            
-            # 绘制注视点 (检查有效性，EyeLink 无效值通常是 -32768 或 NaN)
-            if not np.isnan(gx) and not np.isnan(gy) and gx > -10000 and gy > -10000:
-                x = int(gx)
-                y = int(gy)
-                
-                # 确保坐标在范围内
-                if 0 <= x < width and 0 <= y < height:
-                    # 绘制圆圈（外圈）
-                    cv2.circle(frame, (x, y), gaze_radius, gaze_color, 1)
-                    # 绘制中心点
-                    cv2.circle(frame, (x, y), 2, gaze_color, -1)
+            # 视频时间从0开始，对应EDF时间从video_start_edf_time开始
+            edf_time = video_start_edf_time + edf_duration * (frame_idx / (total_frames - 1))
+
+            # 绘制当前 fixation
+            while fixation_idx < len(fixation_events) and edf_time > fixation_events[fixation_idx]["end"]:
+                fixation_idx += 1
+            if fixation_idx < len(fixation_events):
+                fix = fixation_events[fixation_idx]
+                if fix["start"] <= edf_time <= fix["end"]:
+                    fx = int(fix["x"])
+                    fy = int(fix["y"])
+                    if 0 <= fx < width and 0 <= fy < height:
+                        radius = min(base_radius + int(fix["duration"] / 50), max_radius)
+                        cv2.circle(frame, (fx, fy), radius, fixation_color, 2)
+                        cv2.circle(frame, (fx, fy), 3, fixation_color, -1)
+
+            # 绘制当前 saccade（用箭头表示当前进行的扫视）
+            while saccade_idx < len(saccade_events) and edf_time > saccade_events[saccade_idx]["end"]:
+                saccade_idx += 1
+            if saccade_idx < len(saccade_events):
+                sac = saccade_events[saccade_idx]
+                if sac["start"] <= edf_time <= sac["end"]:
+                    sx = int(sac["sx"])
+                    sy = int(sac["sy"])
+                    ex = int(sac["ex"])
+                    ey = int(sac["ey"])
+                    if (0 <= sx < width and 0 <= sy < height and
+                            0 <= ex < width and 0 <= ey < height):
+                        cv2.arrowedLine(frame, (sx, sy), (ex, ey), saccade_color, 2, tipLength=0.2)
             
             # 写入帧
             out.write(frame)
-            
             frame_idx += 1
             
-            # 进度
-            if frame_idx % 100 == 0:
-                progress = (frame_idx / total_frames) * 100
-                logger.info(f"处理进度: {progress:.1f}%")
+            # 进度 (每 30% 输出一次)
+            progress = (frame_idx / total_frames) * 100
+            if frame_idx % (total_frames // 3) == 0:
+                logger.debug(f"Overlay 进度: {progress:.0f}%")
         
         # 释放资源
         cap.release()
